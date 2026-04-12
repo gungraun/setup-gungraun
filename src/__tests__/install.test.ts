@@ -67,8 +67,8 @@ import { cargoVersionFormat } from "../resolve";
 import { detectPlatform } from "../detect";
 import { getCargoBin } from "../utils";
 import {
-    installGrWithBinstall,
-    installGrFromSource,
+    installRunnerWithBinstall,
+    installRunnerFromSource,
     installValgrindWithPackageManager,
     installValgrind,
     installRunner,
@@ -135,7 +135,7 @@ describe("installGrWithBinstall", () => {
     it("returns false if cargo-binstall is not found", async () => {
         mockWhich.mockResolvedValue("");
 
-        const result = await installGrWithBinstall("v1.0.0");
+        const result = await installRunnerWithBinstall("v1.0.0");
 
         expect(result).toBe(false);
     });
@@ -148,7 +148,7 @@ describe("installGrWithBinstall", () => {
         });
         mockExec.mockResolvedValue(0);
 
-        const result = await installGrWithBinstall("v1.0.0");
+        const result = await installRunnerWithBinstall("v1.0.0");
 
         expect(result).toBe(true);
         expect(mockExec).toHaveBeenCalledWith(getCargoBin(), [
@@ -169,10 +169,16 @@ describe("installGrWithBinstall", () => {
         mockExec.mockResolvedValue(0);
         (cargoVersionFormat as jest.Mock).mockReturnValue(null);
 
-        const result = await installGrWithBinstall("latest");
+        const result = await installRunnerWithBinstall("latest");
 
         expect(result).toBe(true);
-        expect(mockExec).toHaveBeenCalledWith(getCargoBin(), ["binstall", "-y", "--disable-strategies", "compile", "gungraun-runner"]);
+        expect(mockExec).toHaveBeenCalledWith(getCargoBin(), [
+            "binstall",
+            "-y",
+            "--disable-strategies",
+            "compile",
+            "gungraun-runner",
+        ]);
 
         (cargoVersionFormat as jest.Mock).mockRestore?.();
     });
@@ -184,7 +190,7 @@ describe("installGrWithBinstall", () => {
         });
         mockExec.mockRejectedValue(new Error("install failed"));
 
-        const result = await installGrWithBinstall("v1.0.0");
+        const result = await installRunnerWithBinstall("v1.0.0");
 
         expect(result).toBe(false);
     });
@@ -199,7 +205,7 @@ describe("installGrWithBinstall", () => {
         });
         mockExec.mockResolvedValue(0);
 
-        const result = await installGrWithBinstall("v1.0.0");
+        const result = await installRunnerWithBinstall("v1.0.0");
 
         expect(result).toBe(true);
         expect(mockExec).toHaveBeenCalledWith("/custom/cargo", [
@@ -224,7 +230,7 @@ describe("installGrFromSource", () => {
         mockExec.mockResolvedValue(0);
         (cargoVersionFormat as jest.Mock).mockReturnValue("1.0.0");
 
-        await installGrFromSource("v1.0.0");
+        await installRunnerFromSource("v1.0.0");
 
         expect(mockExec).toHaveBeenCalledWith(getCargoBin(), [
             "install",
@@ -238,7 +244,7 @@ describe("installGrFromSource", () => {
         mockExec.mockResolvedValue(0);
         (cargoVersionFormat as jest.Mock).mockReturnValue(null);
 
-        await installGrFromSource("latest");
+        await installRunnerFromSource("latest");
 
         expect(mockExec).toHaveBeenCalledWith(getCargoBin(), ["install", "gungraun-runner"]);
     });

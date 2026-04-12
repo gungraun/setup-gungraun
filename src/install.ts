@@ -72,8 +72,32 @@ async function findBinary(dir: string, name: string): Promise<string | null> {
     return null;
 }
 
+/** Installs the gungraun-runner by trying each strategy in order until one succeeds. */
+export async function installRunner(version: string, strategies: RunnerStrategy[]): Promise<void> {
+    for (const strategy of strategies) {
+        switch (strategy) {
+            case "binstall": {
+                const result = await installRunnerWithBinstall(version);
+                if (result) return;
+                printInfo("Runner strategy 'binstall' failed");
+                break;
+            }
+            case "release": {
+                const result = await installRunnerFromRelease(version);
+                if (result) return;
+                printInfo("Runner strategy 'release' failed");
+                break;
+            }
+            case "source":
+                await installRunnerFromSource(version);
+                return;
+        }
+    }
+    bail("All runner install strategies failed");
+}
+
 /** Installs gungraun-runner from a GitHub release archive. */
-export async function installGrFromRelease(version: string): Promise<boolean> {
+export async function installRunnerFromRelease(version: string): Promise<boolean> {
     const target = await detectTarget();
 
     return withGroup(`Downloading gungraun-runner '${version}'`, async () => {
@@ -105,7 +129,7 @@ export async function installGrFromRelease(version: string): Promise<boolean> {
 }
 
 /** Installs gungraun-runner from source via cargo install. */
-export async function installGrFromSource(version: string): Promise<void> {
+export async function installRunnerFromSource(version: string): Promise<void> {
     await withGroup("Installing gungraun-runner via cargo install", async () => {
         const formatted = cargoVersionFormat(version);
         const args = ["install", "gungraun-runner"];
@@ -119,9 +143,8 @@ export async function installGrFromSource(version: string): Promise<void> {
     });
 }
 
-// TODO: rename to installRunnerWithBinstall and all others, too
 /** Installs gungraun-runner via cargo-binstall if available. */
-export async function installGrWithBinstall(version: string): Promise<boolean> {
+export async function installRunnerWithBinstall(version: string): Promise<boolean> {
     if (!(await io.which("cargo-binstall", false))) {
         return false;
     }
@@ -146,30 +169,6 @@ export async function installGrWithBinstall(version: string): Promise<boolean> {
             return false;
         }
     });
-}
-
-/** Installs the gungraun-runner by trying each strategy in order until one succeeds. */
-export async function installRunner(version: string, strategies: RunnerStrategy[]): Promise<void> {
-    for (const strategy of strategies) {
-        switch (strategy) {
-            case "binstall": {
-                const result = await installGrWithBinstall(version);
-                if (result) return;
-                printInfo("Runner strategy 'binstall' failed");
-                break;
-            }
-            case "release": {
-                const result = await installGrFromRelease(version);
-                if (result) return;
-                printInfo("Runner strategy 'release' failed");
-                break;
-            }
-            case "source":
-                await installGrFromSource(version);
-                return;
-        }
-    }
-    bail("All runner install strategies failed");
 }
 
 /** Installs valgrind by trying each strategy in order until one succeeds. */
