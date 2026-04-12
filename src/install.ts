@@ -5,13 +5,63 @@ import * as io from "@actions/io";
 import * as path from "path";
 import { detectArch, detectPlatform, detectTarget } from "./detect";
 import { downloadAndExtractGr, downloadAndExtractValgrind } from "./download";
-import { cargoVersionFormat, resolveValgrindAssetName, resolveValgrindTag, resolveVersion } from "./resolve";
-import { getCargoBin, logInstalledVersion, printErr, printWarning, withGroup } from "./utils";
+import {
+    cargoVersionFormat,
+    resolveValgrindAssetName,
+    resolveValgrindTag,
+    resolveVersion,
+} from "./resolve";
+import { getCargoBin, logInstalledVersion, bail, withGroup } from "./utils";
+// TODO: reconsider the names for the strategies. Add installation from source
+export type ValgrindStrategy = "release" | "package-manager";
+// TODO: source to compile like in binstall ?
+export type RunnerStrategy = "binstall" | "release" | "source";
 
-const INSTALL_DIR = process.env.RUNNER_INSTALL_DIR ||
+// FIX: use the temporary directory instead of /root
+const INSTALL_DIR =
+    process.env.RUNNER_INSTALL_DIR ||
     (process.env.CARGO_HOME
         ? `${process.env.CARGO_HOME}/bin`
         : `${process.env.HOME || "/root"}/.cargo/bin`);
+
+const VALGRIND_INSTALLERS: Record<ValgrindStrategy, () => Promise<boolean>> = {
+    release: installValgrindFromBuilder,
+    "package-manager": async () => {
+        await installValgrindWithPackageManager();
+        return true;
+    },
+};
+
+export const VALID_VALGRIND_STRATEGIES: readonly ValgrindStrategy[] = [
+    "release",
+    "package-manager",
+];
+export const VALID_RUNNER_STRATEGIES: readonly RunnerStrategy[] = ["binstall", "release", "source"];
+export const DEFAULT_VALGRIND_STRATEGY: string = "release,package-manager";
+export const DEFAULT_RUNNER_STRATEGY: string = "binstall,release,source";
+
+export function parseStrategies<T extends string>(
+    input: string,
+    valid: readonly T[],
+    label: string,
+): T[] {
+    const strategies = input
+        .split(",")
+        .map((s) => s.trim().toLowerCase() as T)
+        .filter((s) => s.length > 0);
+
+    for (const s of strategies) {
+        if (!valid.includes(s)) {
+            bail(`Invalid ${label} strategy '${s}'. Valid values: ${valid.join(", ")}`);
+        }
+    }
+
+    if (strategies.length === 0) {
+        bail(`No ${label} strategies specified`);
+    }
+
+    return strategies;
+}
 
 async function findBinary(dir: string, name: string): Promise<string | null> {
     const entries = fs.readdirSync(dir, { withFileTypes: true, recursive: true });
@@ -44,10 +94,9 @@ export async function installGrFromRelease(version: string): Promise<boolean> {
             await exec.exec("chmod", ["+x", binaryPath]);
             await io.mv(binaryPath, path.join(INSTALL_DIR, "gungraun-runner"));
 
-            await logInstalledVersion(
-                path.join(INSTALL_DIR, "gungraun-runner"),
-                "gungraun-runner"
-            );
+            // FIX: Use fallback `gungraun-runner $version` where version is without the v prefix
+            // FIX: Use label `gungraun-runner`
+            await logInstalledVersion(path.join(INSTALL_DIR, "gungraun-runner"), "gungraun-runner");
             return true;
         } catch (error) {
             core.info(`Failed to install from release: ${(error as Error).message}`);
@@ -66,10 +115,12 @@ export async function installGrFromSource(version: string): Promise<void> {
         }
         await exec.exec(getCargoBin(), args);
 
+        // FIX: Use fallback `gungraun-runner $version` where version is without the v prefix
         await logInstalledVersion("gungraun-runner", "gungraun-runner");
     });
 }
 
+// TODO: rename to installRunnerWithBinstall and all others, too
 /** Installs gungraun-runner via cargo-binstall if available. */
 export async function installGrWithBinstall(version: string): Promise<boolean> {
     if (!(await io.which("cargo-binstall", false))) {
@@ -79,7 +130,7 @@ export async function installGrWithBinstall(version: string): Promise<boolean> {
     return withGroup("Installing gungraun-runner via cargo-binstall", async () => {
         try {
             const formatted = cargoVersionFormat(version);
-            const args = ["binstall", "-y"];
+            const args = ["binstall", "-y", "--disable-strategies", "compile"];
             if (formatted) {
                 args.push(`gungraun-runner@${formatted}`);
             } else {
@@ -98,12 +149,40 @@ export async function installGrWithBinstall(version: string): Promise<boolean> {
     });
 }
 
-/** Installs valgrind, trying the builder release first and falling back to the package manager. */
-export async function installValgrind(): Promise<void> {
-    if (!(await installValgrindFromBuilder())) {
-        printWarning("Could not install valgrind from release, falling back to package manager");
-        await installValgrindWithPackageManager();
+/** Installs the gungraun-runner by trying each strategy in order until one succeeds. */
+export async function installRunner(version: string, strategies: RunnerStrategy[]): Promise<void> {
+    for (const strategy of strategies) {
+        switch (strategy) {
+            case "binstall": {
+                const result = await installGrWithBinstall(version);
+                if (result) return;
+                core.info("Runner strategy 'binstall' failed");
+                break;
+            }
+            case "release": {
+                const result = await installGrFromRelease(version);
+                if (result) return;
+                core.info("Runner strategy 'release' failed");
+                break;
+            }
+            case "source":
+                await installGrFromSource(version);
+                return;
+        }
     }
+    bail("All runner install strategies failed");
+}
+
+/** Installs valgrind by trying each strategy in order until one succeeds. */
+export async function installValgrind(strategies: ValgrindStrategy[]): Promise<void> {
+    for (const strategy of strategies) {
+        const installer = VALGRIND_INSTALLERS[strategy];
+        if (await installer()) {
+            return;
+        }
+        core.info(`Valgrind strategy '${strategy}' failed, trying next strategy`);
+    }
+    bail("All valgrind install strategies failed");
 }
 
 /** Installs valgrind from the gungraun/valgrind-builder GitHub release. */
@@ -114,9 +193,7 @@ export async function installValgrindFromBuilder(): Promise<boolean> {
 
     return withGroup("Installing valgrind from release", async () => {
         try {
-            const tag = await resolveValgrindTag(
-                process.env.VALGRIND_VERSION || "latest"
-            );
+            const tag = await resolveValgrindTag(process.env.VALGRIND_VERSION || "latest");
             const assetName = await resolveValgrindAssetName(tag, arch, platform);
             if (!assetName) {
                 core.info(`No valgrind release found for ${arch}-${platform}`);
@@ -167,7 +244,7 @@ export async function installValgrindWithPackageManager(): Promise<void> {
                 await exec.exec("sudo", ["apk", "add", "valgrind"]);
                 break;
             default:
-                printErr("Unsupported distribution. Cannot install valgrind");
+                bail("Unsupported distribution. Cannot install valgrind");
         }
 
         await logInstalledVersion("valgrind", "valgrind");

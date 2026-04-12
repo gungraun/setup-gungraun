@@ -19,6 +19,14 @@ inputs:
     description: "Valgrind release tag (e.g. v0.1.1, latest)"
     required: false
     default: "latest"
+  valgrind-strategy:
+    description: "Ordered comma-separated list of valgrind install strategies to try. Valid values: release, package-manager"
+    required: false
+    default: "release,package-manager"
+  runner-strategy:
+    description: "Ordered comma-separated list of runner install strategies to try. Valid values: binstall, release, source"
+    required: false
+    default: "binstall,release,source"
   github-token:
     description: "GitHub token for API requests (avoids rate limits on release downloads)"
     required: false

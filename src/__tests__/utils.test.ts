@@ -39,14 +39,11 @@ describe("logInstalledVersion", () => {
 
         await logInstalledVersion("gungraun-runner", "gungraun-runner");
 
-        expect(exec.getExecOutput).toHaveBeenCalledWith(
-            "gungraun-runner",
-            ["--version"],
-            { silent: true, ignoreReturnCode: true }
-        );
-        expect(core.info).toHaveBeenCalledWith(
-            "gungraun-runner installed: gungraun-runner 1.2.3"
-        );
+        expect(exec.getExecOutput).toHaveBeenCalledWith("gungraun-runner", ["--version"], {
+            silent: true,
+            ignoreReturnCode: true,
+        });
+        expect(core.info).toHaveBeenCalledWith("gungraun-runner installed: gungraun-runner 1.2.3");
     });
 
     it("uses fallback when stdout is empty", async () => {

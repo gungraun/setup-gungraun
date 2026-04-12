@@ -2,20 +2,30 @@ import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as io from "@actions/io";
 import { detectProjectVersion } from "./detect";
-import { installGrFromRelease, installGrFromSource, installGrWithBinstall, installValgrind } from "./install";
-import { getCargoBin, printErr } from "./utils";
+import {
+    DEFAULT_RUNNER_STRATEGY,
+    DEFAULT_VALGRIND_STRATEGY,
+    installRunner,
+    installValgrind,
+    parseStrategies,
+    RunnerStrategy,
+    ValgrindStrategy,
+    VALID_RUNNER_STRATEGIES,
+    VALID_VALGRIND_STRATEGIES,
+} from "./install";
+import { getCargoBin, bail } from "./utils";
 
 /** Main entry point: validates environment, detects versions, and installs gungraun-runner and valgrind. */
 async function run(): Promise<void> {
     if (process.platform !== "linux") {
-        printErr("This action only supports Linux runners");
+        bail("This action only supports Linux runners");
     }
 
     if (!(await io.which(getCargoBin(), false))) {
-        printErr("cargo is not installed. This action requires Rust/Cargo.");
+        bail("cargo is not installed. This action requires Rust/Cargo.");
     }
     if (!(await io.which("rustc", false))) {
-        printErr("rustc is not installed. This action requires Rust/Cargo.");
+        bail("rustc is not installed. This action requires Rust/Cargo.");
     }
 
     let runnerVersion = core.getInput("runner-version") || "auto";
@@ -23,6 +33,17 @@ async function run(): Promise<void> {
         const detected = await detectProjectVersion();
         runnerVersion = `v${detected}`;
     }
+
+    const valgrindStrategies = parseStrategies<ValgrindStrategy>(
+        core.getInput("valgrind-strategy") || DEFAULT_VALGRIND_STRATEGY,
+        VALID_VALGRIND_STRATEGIES,
+        "valgrind",
+    );
+    const runnerStrategies = parseStrategies<RunnerStrategy>(
+        core.getInput("runner-strategy") || DEFAULT_RUNNER_STRATEGY,
+        VALID_RUNNER_STRATEGIES,
+        "runner",
+    );
 
     const valgrindPath = await io.which("valgrind", false);
     if (valgrindPath) {
@@ -32,17 +53,10 @@ async function run(): Promise<void> {
         });
         core.info(`Valgrind already installed: ${stdout.trim()} (${valgrindPath})`);
     } else {
-        await installValgrind();
+        await installValgrind(valgrindStrategies);
     }
 
-    if (!(await installGrWithBinstall(runnerVersion))) {
-        if (!(await installGrFromRelease(runnerVersion))) {
-            core.warning(
-                "Could not install from GitHub release, falling back to cargo install"
-            );
-            await installGrFromSource(runnerVersion);
-        }
-    }
+    await installRunner(runnerVersion, runnerStrategies);
 }
 
 run().catch((error) => {

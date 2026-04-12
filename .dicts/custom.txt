@@ -1,7 +1,9 @@
+armv7
 binstall
 endgroup
 gungraun
 INSTALL_DIR
+linuxmint
 noconfirm
 pacman
 pkgid

@@ -32,10 +32,16 @@ jest.mock("fs", () => ({
     readFileSync: jest.fn().mockReturnValue(""),
 }));
 
-import { detectArch, detectTarget, detectPlatform, resolvePackageManager, detectProjectVersion } from "../detect";
+import {
+    detectArch,
+    detectTarget,
+    detectPlatform,
+    resolvePackageManager,
+    detectProjectVersion,
+} from "../detect";
 import * as exec from "@actions/exec";
 import * as fs from "fs";
-import { printErr } from "../utils";
+import { bail } from "../utils";
 
 const mockGetExecOutput = exec.getExecOutput as jest.Mock;
 const mockExistsSync = fs.existsSync as jest.Mock;
@@ -104,12 +110,8 @@ LLVM version: 21.1.8`;
             stdout: "rustc 1.70.0\n",
         });
 
-        await expect(detectTarget()).rejects.toThrow(
-            "Could not detect target from rustc -vV"
-        );
-        expect(printErr).toHaveBeenCalledWith(
-            "Could not detect target from rustc -vV"
-        );
+        await expect(detectTarget()).rejects.toThrow("Could not detect target from rustc -vV");
+        expect(bail).toHaveBeenCalledWith("Could not detect target from rustc -vV");
     });
 });
 
@@ -121,7 +123,7 @@ describe("detectPlatform", () => {
     it("parses /etc/os-release correctly", () => {
         mockExistsSync.mockReturnValue(true);
         mockReadFileSync.mockReturnValue(
-            'ID=ubuntu\nVERSION_ID="22.04"\nID_LIKE=debian\nPRETTY_NAME="Ubuntu 22.04"\n'
+            'ID=ubuntu\nVERSION_ID="22.04"\nID_LIKE=debian\nPRETTY_NAME="Ubuntu 22.04"\n',
         );
 
         const result = detectPlatform();
@@ -136,9 +138,7 @@ describe("detectPlatform", () => {
 
     it("parses /etc/os-release with quoted ID", () => {
         mockExistsSync.mockReturnValue(true);
-        mockReadFileSync.mockReturnValue(
-            'ID="debian"\nVERSION_ID="11"\n'
-        );
+        mockReadFileSync.mockReturnValue('ID="debian"\nVERSION_ID="11"\n');
 
         const result = detectPlatform();
 
@@ -152,9 +152,7 @@ describe("detectPlatform", () => {
 
     it("detects fedora with dnf via fallback", () => {
         mockExistsSync.mockReturnValue(true);
-        mockReadFileSync.mockReturnValue(
-            'ID=fedora\nVERSION_ID="39"\n'
-        );
+        mockReadFileSync.mockReturnValue('ID=fedora\nVERSION_ID="39"\n');
 
         const result = detectPlatform();
 
@@ -168,9 +166,7 @@ describe("detectPlatform", () => {
 
     it("detects alpine with apk via fallback", () => {
         mockExistsSync.mockReturnValue(true);
-        mockReadFileSync.mockReturnValue(
-            'ID=alpine\nVERSION_ID="3.19"\n'
-        );
+        mockReadFileSync.mockReturnValue('ID=alpine\nVERSION_ID="3.19"\n');
 
         const result = detectPlatform();
 
@@ -184,9 +180,7 @@ describe("detectPlatform", () => {
 
     it("detects rhel with dnf via ID_LIKE containing fedora", () => {
         mockExistsSync.mockReturnValue(true);
-        mockReadFileSync.mockReturnValue(
-            'ID=rhel\nVERSION_ID="9.2"\nID_LIKE="rhel fedora"\n'
-        );
+        mockReadFileSync.mockReturnValue('ID=rhel\nVERSION_ID="9.2"\nID_LIKE="rhel fedora"\n');
 
         const result = detectPlatform();
 
@@ -200,9 +194,7 @@ describe("detectPlatform", () => {
 
     it("detects amazon linux with yum via fallback", () => {
         mockExistsSync.mockReturnValue(true);
-        mockReadFileSync.mockReturnValue(
-            'ID=amzn\nVERSION_ID="2"\n'
-        );
+        mockReadFileSync.mockReturnValue('ID=amzn\nVERSION_ID="2"\n');
 
         const result = detectPlatform();
 
@@ -216,9 +208,7 @@ describe("detectPlatform", () => {
 
     it("detects opensuse with zypper via ID_LIKE", () => {
         mockExistsSync.mockReturnValue(true);
-        mockReadFileSync.mockReturnValue(
-            'ID="opensuse-leap"\nVERSION_ID="15.5"\nID_LIKE="suse"\n'
-        );
+        mockReadFileSync.mockReturnValue('ID="opensuse-leap"\nVERSION_ID="15.5"\nID_LIKE="suse"\n');
 
         const result = detectPlatform();
 
@@ -232,9 +222,7 @@ describe("detectPlatform", () => {
 
     it("returns null packageManager for unknown distro", () => {
         mockExistsSync.mockReturnValue(true);
-        mockReadFileSync.mockReturnValue(
-            'ID=gentoo\nVERSION_ID="2.14"\n'
-        );
+        mockReadFileSync.mockReturnValue('ID=gentoo\nVERSION_ID="2.14"\n');
 
         const result = detectPlatform();
 
@@ -249,12 +237,8 @@ describe("detectPlatform", () => {
     it("calls printErr when /etc/os-release does not exist", () => {
         mockExistsSync.mockReturnValue(false);
 
-        expect(() => detectPlatform()).toThrow(
-            "Cannot detect platform: /etc/os-release not found"
-        );
-        expect(printErr).toHaveBeenCalledWith(
-            "Cannot detect platform: /etc/os-release not found"
-        );
+        expect(() => detectPlatform()).toThrow("Cannot detect platform: /etc/os-release not found");
+        expect(bail).toHaveBeenCalledWith("Cannot detect platform: /etc/os-release not found");
     });
 
     it("calls printErr when ID is missing", () => {
@@ -262,13 +246,13 @@ describe("detectPlatform", () => {
         mockReadFileSync.mockReturnValue("SOME_VAR=value\n");
 
         expect(() => detectPlatform()).toThrow(
-            "Cannot detect platform: ID missing from /etc/os-release"
+            "Cannot detect platform: ID missing from /etc/os-release",
         );
     });
 
     it("handles missing VERSION_ID gracefully", () => {
         mockExistsSync.mockReturnValue(true);
-        mockReadFileSync.mockReturnValue('ID=arch\n');
+        mockReadFileSync.mockReturnValue("ID=arch\n");
 
         const result = detectPlatform();
 
@@ -358,7 +342,7 @@ describe("detectProjectVersion", () => {
         expect(mockGetExecOutput).toHaveBeenCalledWith(
             "/custom/path/cargo",
             ["metadata", "--format-version=1"],
-            { silent: true, ignoreReturnCode: true }
+            { silent: true, ignoreReturnCode: true },
         );
     });
 
@@ -374,7 +358,7 @@ describe("detectProjectVersion", () => {
         expect(mockGetExecOutput).toHaveBeenCalledWith(
             "cargo",
             ["metadata", "--format-version=1"],
-            { silent: true, ignoreReturnCode: true }
+            { silent: true, ignoreReturnCode: true },
         );
     });
 
@@ -388,10 +372,10 @@ describe("detectProjectVersion", () => {
         mockGetExecOutput.mockResolvedValue({ stdout: metadata, stderr: "", exitCode: 0 });
 
         await expect(detectProjectVersion()).rejects.toThrow(
-            "Multiple gungraun versions detected in project (0.17.2, 0.18.1). Set runner-version explicitly."
+            "Multiple gungraun versions detected in project (0.17.2, 0.18.1). Set runner-version explicitly.",
         );
-        expect(printErr).toHaveBeenCalledWith(
-            "Multiple gungraun versions detected in project (0.17.2, 0.18.1). Set runner-version explicitly."
+        expect(bail).toHaveBeenCalledWith(
+            "Multiple gungraun versions detected in project (0.17.2, 0.18.1). Set runner-version explicitly.",
         );
     });
 
@@ -412,10 +396,10 @@ describe("detectProjectVersion", () => {
         mockGetExecOutput.mockResolvedValue({ stdout: "", stderr: "", exitCode: 1 });
 
         await expect(detectProjectVersion()).rejects.toThrow(
-            "Could not detect gungraun-runner version from project. Set runner-version explicitly."
+            "Could not detect gungraun-runner version from project. Set runner-version explicitly.",
         );
-        expect(printErr).toHaveBeenCalledWith(
-            "Could not detect gungraun-runner version from project. Set runner-version explicitly."
+        expect(bail).toHaveBeenCalledWith(
+            "Could not detect gungraun-runner version from project. Set runner-version explicitly.",
         );
     });
 });

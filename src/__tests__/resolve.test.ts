@@ -69,7 +69,7 @@ describe("resolveVersion", () => {
         const result = await resolveVersion("latest");
         expect(result).toBe("v2.0.0");
         expect(mockGetLatestRelease).toHaveBeenCalledWith(
-            expect.objectContaining({ owner: "gungraun", repo: "gungraun" })
+            expect.objectContaining({ owner: "gungraun", repo: "gungraun" }),
         );
 
         delete process.env.GITHUB_TOKEN;
@@ -80,7 +80,7 @@ describe("resolveVersion", () => {
         delete process.env.GITHUB_TOKEN;
 
         await expect(resolveVersion("latest")).rejects.toThrow(
-            "Could not determine latest release version for gungraun-runner"
+            "Could not determine latest release version for gungraun-runner",
         );
 
         process.env.GITHUB_TOKEN = originalToken;
@@ -91,7 +91,7 @@ describe("resolveVersion", () => {
         mockGetLatestRelease.mockRejectedValue(new Error("API error"));
 
         await expect(resolveVersion("latest")).rejects.toThrow(
-            "Could not determine latest release version for gungraun-runner"
+            "Could not determine latest release version for gungraun-runner",
         );
 
         delete process.env.GITHUB_TOKEN;
@@ -115,7 +115,7 @@ describe("resolveValgrindTag", () => {
         const result = await resolveValgrindTag("latest");
         expect(result).toBe("v3.21.0");
         expect(mockGetLatestRelease).toHaveBeenCalledWith(
-            expect.objectContaining({ owner: "gungraun", repo: "valgrind-builder" })
+            expect.objectContaining({ owner: "gungraun", repo: "valgrind-builder" }),
         );
 
         delete process.env.GITHUB_TOKEN;
@@ -126,7 +126,7 @@ describe("resolveValgrindTag", () => {
         delete process.env.GITHUB_TOKEN;
 
         await expect(resolveValgrindTag("latest")).rejects.toThrow(
-            "Could not determine latest valgrind release version"
+            "Could not determine latest valgrind release version",
         );
 
         process.env.GITHUB_TOKEN = originalToken;

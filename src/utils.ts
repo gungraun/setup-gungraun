@@ -18,7 +18,11 @@ export function getCargoBin(): string {
 }
 
 /** Logs the installed version of a binary, or a fallback string if unavailable. */
-export async function logInstalledVersion(binary: string, label: string, fallback?: string): Promise<void> {
+export async function logInstalledVersion(
+    binary: string,
+    label: string,
+    fallback?: string,
+): Promise<void> {
     const { stdout } = await exec.getExecOutput(binary, ["--version"], {
         silent: true,
         ignoreReturnCode: true,
@@ -27,9 +31,14 @@ export async function logInstalledVersion(binary: string, label: string, fallbac
 }
 
 /** Marks the action as failed and exits the process. Never returns. */
-export function printErr(message: string): never {
+export function bail(message: string): never {
     core.setFailed(message);
     process.exit(1);
+}
+
+/** Logs a error message. */
+export function printError(message: string): void {
+    core.error(message);
 }
 
 /** Logs an informational message. */

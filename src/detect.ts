@@ -1,6 +1,6 @@
 import * as exec from "@actions/exec";
 import * as fs from "fs";
-import { getCargoBin, printErr } from "./utils";
+import { getCargoBin, bail } from "./utils";
 
 /** Platform information detected from /etc/os-release. */
 export interface PlatformInfo {
@@ -39,7 +39,7 @@ export function detectArch(target: string): string {
 /** Detects the platform, version, and package manager from /etc/os-release. */
 export function detectPlatform(): PlatformInfo {
     if (!fs.existsSync("/etc/os-release")) {
-        printErr("Cannot detect platform: /etc/os-release not found");
+        bail("Cannot detect platform: /etc/os-release not found");
     }
 
     const content = fs.readFileSync("/etc/os-release", "utf-8");
@@ -47,7 +47,7 @@ export function detectPlatform(): PlatformInfo {
     const versionMatch = content.match(/^VERSION_ID="?(.+?)"?$/m);
 
     if (!idMatch) {
-        printErr("Cannot detect platform: ID missing from /etc/os-release");
+        bail("Cannot detect platform: ID missing from /etc/os-release");
     }
 
     const id = idMatch![1].trim(); // Safe: printErr exits if idMatch is null
@@ -67,7 +67,7 @@ export async function detectProjectVersion(): Promise<string> {
         const { stdout } = await exec.getExecOutput(
             getCargoBin(),
             ["metadata", "--format-version=1"],
-            { silent: true, ignoreReturnCode: true }
+            { silent: true, ignoreReturnCode: true },
         );
         metadataStdout = stdout;
     } catch {
@@ -78,9 +78,7 @@ export async function detectProjectVersion(): Promise<string> {
         let pkgs: { name: string; version: string }[] | undefined;
         try {
             const metadata = JSON.parse(metadataStdout);
-            pkgs = metadata.packages?.filter(
-                (p: { name: string }) => p.name === "gungraun"
-            );
+            pkgs = metadata.packages?.filter((p: { name: string }) => p.name === "gungraun");
         } catch {
             // Fall through to cargo pkgid
         }
@@ -90,18 +88,17 @@ export async function detectProjectVersion(): Promise<string> {
         }
         if (pkgs && pkgs.length > 1) {
             const versions = pkgs.map((p: { version: string }) => p.version).join(", ");
-            printErr(
-                `Multiple gungraun versions detected in project (${versions}). Set runner-version explicitly.`
+            bail(
+                `Multiple gungraun versions detected in project (${versions}). Set runner-version explicitly.`,
             );
         }
     }
 
     try {
-        const { stdout } = await exec.getExecOutput(
-            getCargoBin(),
-            ["pkgid", "gungraun"],
-            { silent: true, ignoreReturnCode: true }
-        );
+        const { stdout } = await exec.getExecOutput(getCargoBin(), ["pkgid", "gungraun"], {
+            silent: true,
+            ignoreReturnCode: true,
+        });
         const match = stdout.match(/(\d+\.\d+\.\d+)/);
         if (match) {
             return match[1];
@@ -110,9 +107,7 @@ export async function detectProjectVersion(): Promise<string> {
         // Fall through to error
     }
 
-    printErr(
-        "Could not detect gungraun-runner version from project. Set runner-version explicitly."
-    );
+    bail("Could not detect gungraun-runner version from project. Set runner-version explicitly.");
 }
 
 /** Detects the Rust compiler target triple, using RUNNER_TARGET env var if set. */
@@ -127,7 +122,7 @@ export async function detectTarget(): Promise<string> {
     });
     const match = stdout.match(/^host:\s*(.+)$/m);
     if (!match) {
-        printErr("Could not detect target from rustc -vV");
+        bail("Could not detect target from rustc -vV");
     }
     return match![1].trim(); // Safe: printErr exits if match is null
 }

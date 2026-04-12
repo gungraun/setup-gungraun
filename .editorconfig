@@ -7,12 +7,16 @@ end_of_line = lf
 insert_final_newline = true
 charset = utf-8
 trim_trailing_whitespace = true
+max_line_length = 80
 
 [*.{yml,yaml}]
 indent_size = 2
 
 [*.md]
 trim_trailing_whitespace = false
+
+[*.ts]
+max_line_length = 100
 
 [*.{json,jsonc}]
 indent_size = 4

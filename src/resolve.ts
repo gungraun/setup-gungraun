@@ -25,10 +25,7 @@ export function escapeRegex(str: string): string {
 }
 
 /** Fetches release assets for a given repo and tag from the GitHub API. */
-export async function getReleaseAssets(
-    repo: string,
-    tag: string
-): Promise<ReleaseInfo> {
+export async function getReleaseAssets(repo: string, tag: string): Promise<ReleaseInfo> {
     const token = process.env.GITHUB_TOKEN;
     if (!token) {
         throw new Error("GITHUB_TOKEN is required for GitHub API calls");
@@ -75,11 +72,11 @@ async function resolveLatestTag(repo: string, notFoundMessage: string): Promise<
 export async function resolveValgrindAssetName(
     tag: string,
     arch: string,
-    platform: string
+    platform: string,
 ): Promise<string | null> {
     const release = await getReleaseAssets(VALGRIND_REPO, tag);
     const pattern = new RegExp(
-        `^valgrind-\\d+\\.\\d+\\.\\d+-${escapeRegex(arch)}-${escapeRegex(platform)}\\.tar\\.gz$`
+        `^valgrind-\\d+\\.\\d+\\.\\d+-${escapeRegex(arch)}-${escapeRegex(platform)}\\.tar\\.gz$`,
     );
 
     const matching = release.assets
@@ -96,10 +93,7 @@ export async function resolveValgrindTag(version: string): Promise<string> {
     if (version !== "latest") {
         return version;
     }
-    return resolveLatestTag(
-        VALGRIND_REPO,
-        "Could not determine latest valgrind release version"
-    );
+    return resolveLatestTag(VALGRIND_REPO, "Could not determine latest valgrind release version");
 }
 
 /** Resolves a gungraun-runner version tag, fetching "latest" from GitHub if needed. */
@@ -109,6 +103,6 @@ export async function resolveVersion(version: string): Promise<string> {
     }
     return resolveLatestTag(
         GITHUB_REPO,
-        "Could not determine latest release version for gungraun-runner"
+        "Could not determine latest release version for gungraun-runner",
     );
 }
