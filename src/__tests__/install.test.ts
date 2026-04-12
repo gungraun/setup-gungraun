@@ -75,6 +75,7 @@ import {
     parseStrategies,
     VALID_VALGRIND_STRATEGIES,
     VALID_RUNNER_STRATEGIES,
+    getRunnerInstallDir,
 } from "../install";
 
 const mockExec = exec.exec as jest.Mock;
@@ -452,5 +453,38 @@ describe("installRunner", () => {
         await installRunner("v1.0.0", ["binstall", "release", "source"]);
 
         expect(mockExec).toHaveBeenCalledWith(getCargoBin(), expect.arrayContaining(["binstall"]));
+    });
+});
+
+describe("getRunnerInstallDir", () => {
+    it("returns CARGO_HOME/bin with needsExport=false when CARGO_HOME is set", () => {
+        process.env.CARGO_HOME = "/home/user/.cargo";
+        const result = getRunnerInstallDir();
+        expect(result).toEqual({ dir: "/home/user/.cargo/bin", needsExport: false });
+        delete process.env.CARGO_HOME;
+    });
+
+    it("returns HOME/.cargo/bin with needsExport=true when HOME is set", () => {
+        delete process.env.CARGO_HOME;
+        process.env.HOME = "/home/user";
+        const result = getRunnerInstallDir();
+        expect(result).toEqual({ dir: "/home/user/.cargo/bin", needsExport: true });
+    });
+
+    it("returns RUNNER_TEMP/.cargo/bin with needsExport=true when HOME is not set", () => {
+        delete process.env.CARGO_HOME;
+        delete process.env.HOME;
+        process.env.RUNNER_TEMP = "/tmp/runner-temp";
+        const result = getRunnerInstallDir();
+        expect(result).toEqual({ dir: "/tmp/runner-temp/.cargo/bin", needsExport: true });
+        delete process.env.RUNNER_TEMP;
+    });
+
+    it("falls back to /tmp/.cargo/bin with needsExport=true when nothing is set", () => {
+        delete process.env.CARGO_HOME;
+        delete process.env.HOME;
+        delete process.env.RUNNER_TEMP;
+        const result = getRunnerInstallDir();
+        expect(result).toBe(null);
     });
 });

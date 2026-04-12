@@ -1,9 +1,13 @@
+import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as fs from "fs";
 import * as io from "@actions/io";
 import * as path from "path";
 import { detectArch, detectPlatform, detectTarget } from "./detect";
-import { downloadAndExtractGr, downloadAndExtractValgrind } from "./download";
+import {
+    downloadAndExtractGr as downloadAndExtractRunner,
+    downloadAndExtractValgrind,
+} from "./download";
 import {
     cargoVersionFormat,
     resolveValgrindAssetName,
@@ -16,13 +20,6 @@ export type ValgrindStrategy = "release" | "package-manager";
 // TODO: source to compile like in binstall ?
 export type RunnerStrategy = "binstall" | "release" | "source";
 
-// FIX: use the temporary directory instead of /root
-const INSTALL_DIR =
-    process.env.RUNNER_INSTALL_DIR ||
-    (process.env.CARGO_HOME
-        ? `${process.env.CARGO_HOME}/bin`
-        : `${process.env.HOME || "/root"}/.cargo/bin`);
-
 export const VALID_VALGRIND_STRATEGIES: readonly ValgrindStrategy[] = [
     "release",
     "package-manager",
@@ -30,6 +27,22 @@ export const VALID_VALGRIND_STRATEGIES: readonly ValgrindStrategy[] = [
 export const VALID_RUNNER_STRATEGIES: readonly RunnerStrategy[] = ["binstall", "release", "source"];
 export const DEFAULT_VALGRIND_STRATEGY: string = "release,package-manager";
 export const DEFAULT_RUNNER_STRATEGY: string = "binstall,release,source";
+
+export function getRunnerInstallDir(): { dir: string; needsExport: boolean } | null {
+    if (process.env.CARGO_INSTALL_ROOT) {
+        return { dir: `${process.env.CARGO_INSTALL_ROOT}/bin`, needsExport: false };
+    }
+    if (process.env.CARGO_HOME) {
+        return { dir: `${process.env.CARGO_HOME}/bin`, needsExport: false };
+    }
+    if (process.env.HOME) {
+        return { dir: `${process.env.HOME}/.cargo/bin`, needsExport: true };
+    }
+    if (process.env.RUNNER_TEMP) {
+        return { dir: `${process.env.RUNNER_TEMP}/.cargo/bin`, needsExport: true };
+    }
+    return null;
+}
 
 export function parseStrategies<T extends string>(
     input: string,
@@ -101,7 +114,7 @@ export async function installRunnerFromRelease(version: string): Promise<boolean
     return withGroup(`Downloading gungraun-runner '${version}'`, async () => {
         try {
             const tag = await resolveVersion(version);
-            const extractDir = await downloadAndExtractGr(tag, target);
+            const extractDir = await downloadAndExtractRunner(tag, target);
 
             const binaryPath = path.join(extractDir, "gungraun-runner");
             if (!fs.existsSync(binaryPath)) {
@@ -112,12 +125,29 @@ export async function installRunnerFromRelease(version: string): Promise<boolean
                 }
             }
 
+            const result = getRunnerInstallDir();
+            if (!result) {
+                printError("Unable to find a installation directory for gungraun-runner");
+                return false;
+            }
+            const { dir: installDir, needsExport } = result!;
+
             await exec.exec("chmod", ["+x", binaryPath]);
-            await io.mv(binaryPath, path.join(INSTALL_DIR, "gungraun-runner"));
+
+            if (!fs.existsSync(installDir)) {
+                fs.mkdirSync(installDir, { recursive: true });
+            }
+
+            await io.mv(binaryPath, path.join(installDir, "gungraun-runner"));
+
+            if (needsExport) {
+                core.addPath(installDir);
+                core.exportVariable("GUNGRAUN_RUNNER", path.join(installDir, "gungraun-runner"));
+            }
 
             // FIX: Use fallback `gungraun-runner $version` where version is without the v prefix
             // FIX: Use label `gungraun-runner`
-            await logInstalledVersion(path.join(INSTALL_DIR, "gungraun-runner"), "gungraun-runner");
+            await logInstalledVersion(path.join(installDir, "gungraun-runner"), "gungraun-runner");
             return true;
         } catch (error) {
             printError(
