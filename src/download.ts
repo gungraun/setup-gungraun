@@ -1,9 +1,8 @@
-import * as core from "@actions/core";
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as tc from "@actions/tool-cache";
 import { getReleaseAssets } from "./resolve";
-import { GITHUB_REPO, VALGRIND_REPO } from "./utils";
+import { GITHUB_REPO, VALGRIND_REPO, printInfo } from "./utils";
 
 /** Downloads and extracts the gungraun-runner release archive for a given tag and target. */
 export async function downloadAndExtractGr(tag: string, target: string): Promise<string> {
@@ -61,5 +60,5 @@ async function verifySha256(
         );
     }
 
-    core.info(`SHA-256 verified for ${expectedName}`);
+    printInfo(`SHA-256 verified for ${expectedName}`);
 }

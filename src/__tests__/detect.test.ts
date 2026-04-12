@@ -13,9 +13,10 @@ jest.mock("@actions/core", () => ({
 }));
 
 jest.mock("../utils", () => ({
-    printErr: jest.fn((msg: string) => {
+    bail: jest.fn((msg: string) => {
         throw new Error(msg);
     }),
+    printError: jest.fn(),
     printInfo: jest.fn(),
     printWarning: jest.fn(),
     startGroup: jest.fn(),

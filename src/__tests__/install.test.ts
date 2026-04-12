@@ -46,9 +46,11 @@ jest.mock("../download", () => ({
 jest.mock("../utils", () => ({
     withGroup: jest.fn((_name: string, fn: () => Promise<unknown>) => fn()),
     logInstalledVersion: jest.fn().mockResolvedValue(undefined),
-    printErr: jest.fn((msg: string) => {
+    bail: jest.fn((msg: string) => {
         throw new Error(msg);
     }),
+    printError: jest.fn(),
+    printInfo: jest.fn(),
     printWarning: jest.fn(),
     getCargoBin: jest.fn(() => process.env.CARGO || "cargo"),
 }));
@@ -152,6 +154,8 @@ describe("installGrWithBinstall", () => {
         expect(mockExec).toHaveBeenCalledWith(getCargoBin(), [
             "binstall",
             "-y",
+            "--disable-strategies",
+            "compile",
             "gungraun-runner@1.0.0",
         ]);
     });
@@ -168,7 +172,7 @@ describe("installGrWithBinstall", () => {
         const result = await installGrWithBinstall("latest");
 
         expect(result).toBe(true);
-        expect(mockExec).toHaveBeenCalledWith(getCargoBin(), ["binstall", "-y", "gungraun-runner"]);
+        expect(mockExec).toHaveBeenCalledWith(getCargoBin(), ["binstall", "-y", "--disable-strategies", "compile", "gungraun-runner"]);
 
         (cargoVersionFormat as jest.Mock).mockRestore?.();
     });
@@ -201,6 +205,8 @@ describe("installGrWithBinstall", () => {
         expect(mockExec).toHaveBeenCalledWith("/custom/cargo", [
             "binstall",
             "-y",
+            "--disable-strategies",
+            "compile",
             "gungraun-runner@1.0.0",
         ]);
 

@@ -1,4 +1,3 @@
-import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as fs from "fs";
 import * as io from "@actions/io";
@@ -11,7 +10,7 @@ import {
     resolveValgrindTag,
     resolveVersion,
 } from "./resolve";
-import { getCargoBin, logInstalledVersion, bail, withGroup } from "./utils";
+import { getCargoBin, logInstalledVersion, bail, printError, printInfo, withGroup } from "./utils";
 // TODO: reconsider the names for the strategies. Add installation from source
 export type ValgrindStrategy = "release" | "package-manager";
 // TODO: source to compile like in binstall ?
@@ -86,7 +85,7 @@ export async function installGrFromRelease(version: string): Promise<boolean> {
             if (!fs.existsSync(binaryPath)) {
                 const found = await findBinary(extractDir, "gungraun-runner");
                 if (!found) {
-                    core.error("Could not find gungraun-runner binary in archive");
+                    printError("Could not find gungraun-runner binary in archive");
                     return false;
                 }
             }
@@ -99,7 +98,7 @@ export async function installGrFromRelease(version: string): Promise<boolean> {
             await logInstalledVersion(path.join(INSTALL_DIR, "gungraun-runner"), "gungraun-runner");
             return true;
         } catch (error) {
-            core.info(`Failed to install from release: ${(error as Error).message}`);
+            printInfo(`Failed to install from release: ${(error as Error).message}`);
             return false;
         }
     });
@@ -156,13 +155,13 @@ export async function installRunner(version: string, strategies: RunnerStrategy[
             case "binstall": {
                 const result = await installGrWithBinstall(version);
                 if (result) return;
-                core.info("Runner strategy 'binstall' failed");
+                printInfo("Runner strategy 'binstall' failed");
                 break;
             }
             case "release": {
                 const result = await installGrFromRelease(version);
                 if (result) return;
-                core.info("Runner strategy 'release' failed");
+                printInfo("Runner strategy 'release' failed");
                 break;
             }
             case "source":
@@ -180,7 +179,7 @@ export async function installValgrind(strategies: ValgrindStrategy[]): Promise<v
         if (await installer()) {
             return;
         }
-        core.info(`Valgrind strategy '${strategy}' failed, trying next strategy`);
+        printInfo(`Valgrind strategy '${strategy}' failed, trying next strategy`);
     }
     bail("All valgrind install strategies failed");
 }
@@ -196,11 +195,11 @@ export async function installValgrindFromBuilder(): Promise<boolean> {
             const tag = await resolveValgrindTag(process.env.VALGRIND_VERSION || "latest");
             const assetName = await resolveValgrindAssetName(tag, arch, platform);
             if (!assetName) {
-                core.info(`No valgrind release found for ${arch}-${platform}`);
+                printInfo(`No valgrind release found for ${arch}-${platform}`);
                 return false;
             }
 
-            core.info(`Downloading valgrind ${tag} (${assetName})`);
+            printInfo(`Downloading valgrind ${tag} (${assetName})`);
             const extractDir = await downloadAndExtractValgrind(tag, assetName);
 
             await exec.exec("sudo", ["tar", "-xzf", path.join(extractDir, assetName), "-C", "/"]);
@@ -208,7 +207,7 @@ export async function installValgrindFromBuilder(): Promise<boolean> {
             await logInstalledVersion("valgrind", "valgrind");
             return true;
         } catch (error) {
-            core.info(`Failed to install valgrind from release: ${(error as Error).message}`);
+            printInfo(`Failed to install valgrind from release: ${(error as Error).message}`);
             return false;
         }
     });

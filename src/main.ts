@@ -13,7 +13,7 @@ import {
     VALID_RUNNER_STRATEGIES,
     VALID_VALGRIND_STRATEGIES,
 } from "./install";
-import { getCargoBin, bail } from "./utils";
+import { getCargoBin, bail, printInfo } from "./utils";
 
 /** Main entry point: validates environment, detects versions, and installs gungraun-runner and valgrind. */
 async function run(): Promise<void> {
@@ -51,7 +51,7 @@ async function run(): Promise<void> {
             silent: true,
             ignoreReturnCode: true,
         });
-        core.info(`Valgrind already installed: ${stdout.trim()} (${valgrindPath})`);
+        printInfo(`Valgrind already installed: ${stdout.trim()} (${valgrindPath})`);
     } else {
         await installValgrind(valgrindStrategies);
     }
