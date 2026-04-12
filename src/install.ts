@@ -23,14 +23,6 @@ const INSTALL_DIR =
         ? `${process.env.CARGO_HOME}/bin`
         : `${process.env.HOME || "/root"}/.cargo/bin`);
 
-const VALGRIND_INSTALLERS: Record<ValgrindStrategy, () => Promise<boolean>> = {
-    release: installValgrindFromBuilder,
-    "package-manager": async () => {
-        await installValgrindWithPackageManager();
-        return true;
-    },
-};
-
 export const VALID_VALGRIND_STRATEGIES: readonly ValgrindStrategy[] = [
     "release",
     "package-manager",
@@ -79,20 +71,26 @@ export async function installRunner(version: string, strategies: RunnerStrategy[
             case "binstall": {
                 const result = await installRunnerWithBinstall(version);
                 if (result) return;
-                printInfo("Runner strategy 'binstall' failed");
                 break;
             }
             case "release": {
                 const result = await installRunnerFromRelease(version);
                 if (result) return;
-                printInfo("Runner strategy 'release' failed");
                 break;
             }
-            case "source":
-                await installRunnerFromSource(version);
-                return;
+            case "source": {
+                const result = await installRunnerFromSource(version);
+                if (result) return;
+                break;
+            }
+            default: {
+                bail(`Invalid strategy '${strategy}'`);
+            }
         }
+
+        printError(`Runner strategy '${strategy}' failed`);
     }
+
     bail("All runner install strategies failed");
 }
 
@@ -122,24 +120,34 @@ export async function installRunnerFromRelease(version: string): Promise<boolean
             await logInstalledVersion(path.join(INSTALL_DIR, "gungraun-runner"), "gungraun-runner");
             return true;
         } catch (error) {
-            printInfo(`Failed to install from release: ${(error as Error).message}`);
+            printError(
+                `Failed to install gungraun-runner from release: ${(error as Error).message}`,
+            );
             return false;
         }
     });
 }
 
 /** Installs gungraun-runner from source via cargo install. */
-export async function installRunnerFromSource(version: string): Promise<void> {
-    await withGroup("Installing gungraun-runner via cargo install", async () => {
-        const formatted = cargoVersionFormat(version);
-        const args = ["install", "gungraun-runner"];
-        if (formatted) {
-            args.push("--version", formatted);
-        }
-        await exec.exec(getCargoBin(), args);
+export async function installRunnerFromSource(version: string): Promise<boolean> {
+    return withGroup("Installing gungraun-runner via cargo install", async () => {
+        try {
+            const formatted = cargoVersionFormat(version);
+            const args = ["install", "gungraun-runner"];
+            if (formatted) {
+                args.push("--version", formatted);
+            }
+            await exec.exec(getCargoBin(), args);
 
-        // FIX: Use fallback `gungraun-runner $version` where version is without the v prefix
-        await logInstalledVersion("gungraun-runner", "gungraun-runner");
+            // FIX: Use fallback `gungraun-runner $version` where version is without the v prefix
+            await logInstalledVersion("gungraun-runner", "gungraun-runner");
+            return true;
+        } catch (error) {
+            printError(
+                `Failed to install gungraun-runner from source: ${(error as Error).message}`,
+            );
+            return false;
+        }
     });
 }
 
@@ -158,14 +166,19 @@ export async function installRunnerWithBinstall(version: string): Promise<boolea
             } else {
                 args.push("gungraun-runner");
             }
+
             await exec.exec(getCargoBin(), args);
 
             const grPath = await io.which("gungraun-runner", false);
             if (grPath) {
                 await logInstalledVersion("gungraun-runner", "gungraun-runner");
             }
+
             return true;
-        } catch {
+        } catch (error) {
+            printError(
+                `Failed to install gungraun-runner with cargo-binstall: ${(error as Error).message}`,
+            );
             return false;
         }
     });
@@ -174,13 +187,26 @@ export async function installRunnerWithBinstall(version: string): Promise<boolea
 /** Installs valgrind by trying each strategy in order until one succeeds. */
 export async function installValgrind(strategies: ValgrindStrategy[]): Promise<void> {
     for (const strategy of strategies) {
-        const installer = VALGRIND_INSTALLERS[strategy];
-        if (await installer()) {
-            return;
+        switch (strategy) {
+            case "release": {
+                const result = await installValgrindFromBuilder();
+                if (result) return;
+                break;
+            }
+            case "package-manager": {
+                const result = await installValgrindWithPackageManager();
+                if (result) return;
+                break;
+            }
+            default: {
+                bail(`Invalid strategy '${strategy}'`);
+            }
         }
-        printInfo(`Valgrind strategy '${strategy}' failed, trying next strategy`);
+
+        printError(`Valgrind strategy '${strategy}' failed`);
     }
-    bail("All valgrind install strategies failed");
+
+    bail("All valgrind installation strategies failed");
 }
 
 /** Installs valgrind from the gungraun/valgrind-builder GitHub release. */
@@ -194,7 +220,7 @@ export async function installValgrindFromBuilder(): Promise<boolean> {
             const tag = await resolveValgrindTag(process.env.VALGRIND_VERSION || "latest");
             const assetName = await resolveValgrindAssetName(tag, arch, platform);
             if (!assetName) {
-                printInfo(`No valgrind release found for ${arch}-${platform}`);
+                printError(`No valgrind release found for ${arch}-${platform}`);
                 return false;
             }
 
@@ -206,45 +232,53 @@ export async function installValgrindFromBuilder(): Promise<boolean> {
             await logInstalledVersion("valgrind", "valgrind");
             return true;
         } catch (error) {
-            printInfo(`Failed to install valgrind from release: ${(error as Error).message}`);
+            printError(`Failed to install valgrind from release: ${(error as Error).message}`);
             return false;
         }
     });
 }
 
 /** Installs valgrind using the system package manager. */
-export async function installValgrindWithPackageManager(): Promise<void> {
-    await withGroup("Installing valgrind via package manager", async () => {
-        const { packageManager } = detectPlatform();
+export async function installValgrindWithPackageManager(): Promise<boolean> {
+    return withGroup("Installing valgrind via package manager", async () => {
+        try {
+            const { packageManager } = detectPlatform();
 
-        switch (packageManager) {
-            case "apt-get":
-                await exec.exec("sudo", ["apt-get", "update", "-qq"]);
-                await exec.exec("sudo", ["apt-get", "install", "-y", "-qq", "valgrind"]);
-                break;
-            case "dnf":
-                await exec.exec("sudo", ["dnf", "install", "-y", "valgrind"]);
-                break;
-            case "yum":
-                try {
-                    await exec.exec("sudo", ["yum", "install", "-y", "valgrind"]);
-                } catch {
+            switch (packageManager) {
+                case "apt-get":
+                    await exec.exec("sudo", ["apt-get", "update", "-qq"]);
+                    await exec.exec("sudo", ["apt-get", "install", "-y", "-qq", "valgrind"]);
+                    break;
+                case "dnf":
                     await exec.exec("sudo", ["dnf", "install", "-y", "valgrind"]);
-                }
-                break;
-            case "pacman":
-                await exec.exec("sudo", ["pacman", "-S", "--noconfirm", "valgrind"]);
-                break;
-            case "zypper":
-                await exec.exec("sudo", ["zypper", "--non-interactive", "install", "valgrind"]);
-                break;
-            case "apk":
-                await exec.exec("sudo", ["apk", "add", "valgrind"]);
-                break;
-            default:
-                bail("Unsupported distribution. Cannot install valgrind");
-        }
+                    break;
+                case "yum":
+                    try {
+                        await exec.exec("sudo", ["yum", "install", "-y", "valgrind"]);
+                    } catch {
+                        await exec.exec("sudo", ["dnf", "install", "-y", "valgrind"]);
+                    }
+                    break;
+                case "pacman":
+                    await exec.exec("sudo", ["pacman", "-S", "--noconfirm", "valgrind"]);
+                    break;
+                case "zypper":
+                    await exec.exec("sudo", ["zypper", "--non-interactive", "install", "valgrind"]);
+                    break;
+                case "apk":
+                    await exec.exec("sudo", ["apk", "add", "valgrind"]);
+                    break;
+                default:
+                    bail("Unsupported distribution. Cannot install valgrind");
+            }
 
-        await logInstalledVersion("valgrind", "valgrind");
+            await logInstalledVersion("valgrind", "valgrind");
+            return true;
+        } catch (error) {
+            printError(
+                `Failed to install Valgrind with package manager: ${(error as Error).message}`,
+            );
+            return false;
+        }
     });
 }

@@ -127,7 +127,7 @@ describe("parseStrategies", () => {
     });
 });
 
-describe("installGrWithBinstall", () => {
+describe("installRunnerWithBinstall", () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
@@ -221,7 +221,7 @@ describe("installGrWithBinstall", () => {
     });
 });
 
-describe("installGrFromSource", () => {
+describe("installRunnerFromSource", () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
@@ -317,8 +317,9 @@ describe("installValgrindWithPackageManager", () => {
             packageManager: "apt-get",
         });
 
-        await installValgrindWithPackageManager();
+        const result = await installValgrindWithPackageManager();
 
+        expect(result).toBe(true);
         expect(mockExec).toHaveBeenCalledWith("sudo", ["apt-get", "update", "-qq"]);
         expect(mockExec).toHaveBeenCalledWith("sudo", [
             "apt-get",
@@ -337,8 +338,9 @@ describe("installValgrindWithPackageManager", () => {
             packageManager: "dnf",
         });
 
-        await installValgrindWithPackageManager();
+        const result = await installValgrindWithPackageManager();
 
+        expect(result).toBe(true);
         expect(mockExec).toHaveBeenCalledWith("sudo", ["dnf", "install", "-y", "valgrind"]);
     });
 
@@ -351,8 +353,9 @@ describe("installValgrindWithPackageManager", () => {
         });
         mockExec.mockRejectedValueOnce(new Error("yum failed"));
 
-        await installValgrindWithPackageManager();
+        const result = await installValgrindWithPackageManager();
 
+        expect(result).toBe(true);
         expect(mockExec).toHaveBeenCalledWith("sudo", ["yum", "install", "-y", "valgrind"]);
         expect(mockExec).toHaveBeenCalledWith("sudo", ["dnf", "install", "-y", "valgrind"]);
     });
@@ -365,8 +368,9 @@ describe("installValgrindWithPackageManager", () => {
             packageManager: "yum",
         });
 
-        await installValgrindWithPackageManager();
+        const result = await installValgrindWithPackageManager();
 
+        expect(result).toBe(true);
         expect(mockExec).toHaveBeenCalledWith("sudo", ["yum", "install", "-y", "valgrind"]);
         expect(mockExec).not.toHaveBeenCalledWith("sudo", ["dnf", "install", "-y", "valgrind"]);
     });
@@ -379,8 +383,9 @@ describe("installValgrindWithPackageManager", () => {
             packageManager: "pacman",
         });
 
-        await installValgrindWithPackageManager();
+        const result = await installValgrindWithPackageManager();
 
+        expect(result).toBe(true);
         expect(mockExec).toHaveBeenCalledWith("sudo", ["pacman", "-S", "--noconfirm", "valgrind"]);
     });
 
@@ -392,8 +397,9 @@ describe("installValgrindWithPackageManager", () => {
             packageManager: "zypper",
         });
 
-        await installValgrindWithPackageManager();
+        const result = await installValgrindWithPackageManager();
 
+        expect(result).toBe(true);
         expect(mockExec).toHaveBeenCalledWith("sudo", [
             "zypper",
             "--non-interactive",
@@ -410,8 +416,9 @@ describe("installValgrindWithPackageManager", () => {
             packageManager: "apk",
         });
 
-        await installValgrindWithPackageManager();
+        const result = await installValgrindWithPackageManager();
 
+        expect(result).toBe(true);
         expect(mockExec).toHaveBeenCalledWith("sudo", ["apk", "add", "valgrind"]);
     });
 
@@ -423,9 +430,9 @@ describe("installValgrindWithPackageManager", () => {
             packageManager: null,
         });
 
-        await expect(installValgrindWithPackageManager()).rejects.toThrow(
-            "Unsupported distribution. Cannot install valgrind",
-        );
+        const result = await installValgrindWithPackageManager();
+
+        expect(result).toBe(false);
     });
 });
 
