@@ -1,6 +1,7 @@
 import * as exec from "@actions/exec";
 import { getOctokit } from "@actions/github";
-import { GITHUB_REPO, VALGRIND_REPO } from "./utils";
+import { escapeRegex, GITHUB_REPO, VALGRIND_BUILDER_REPO } from "./utils";
+import { ResolvedVersion, Version } from "./version";
 
 const VALGRIND_SOURCE_REPO = "https://sourceware.org/git/valgrind.git";
 
@@ -14,21 +15,8 @@ interface ReleaseInfo {
     assets: ReleaseAsset[];
 }
 
-/** Strip the leading "v" from a version string, returning null for "latest". */
-export function cargoVersionFormat(version: string): string | null {
-    if (version === "latest") {
-        return null;
-    }
-    return version.replace(/^v/, "");
-}
-
-/** Escapes special regex characters in a string. */
-export function escapeRegex(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 /** Fetches release assets for a given repo and tag from the GitHub API. */
-export async function getReleaseAssets(repo: string, tag: string): Promise<ReleaseInfo> {
+export async function getReleaseAssets(repo: string, version: Version): Promise<ReleaseInfo> {
     const token = process.env.GITHUB_TOKEN;
     if (!token) {
         throw new Error("GITHUB_TOKEN is required for GitHub API calls");
@@ -37,24 +25,35 @@ export async function getReleaseAssets(repo: string, tag: string): Promise<Relea
     const octokit = getOctokit(token);
     const [owner, repoName] = repo.split("/");
 
-    const { data } = await octokit.rest.repos.getReleaseByTag({
-        owner,
-        repo: repoName,
-        tag,
-    });
+    let release: {
+        data: { tag_name: string; assets: { name: string; browser_download_url: string }[] };
+    };
+    if (version.isLatest()) {
+        release = await octokit.rest.repos.getLatestRelease({
+            owner,
+            repo: repoName,
+        });
+    } else {
+        release = await octokit.rest.repos.getReleaseByTag({
+            owner,
+            repo: repoName,
+            tag: version.withPrefix(),
+        });
+    }
 
     return {
-        tagName: data.tag_name,
-        assets: data.assets.map((a) => ({
+        tagName: release.data.tag_name,
+        assets: release.data.assets.map((a) => ({
             name: a.name,
             browserDownloadUrl: a.browser_download_url,
         })),
     };
 }
 
-async function resolveLatestTag(repo: string, notFoundMessage: string): Promise<string> {
+async function resolveLatestTag(repo: string, notFoundMessage: string): Promise<ResolvedVersion> {
     const token = process.env.GITHUB_TOKEN;
     if (token) {
+        let tag: string;
         try {
             const octokit = getOctokit(token);
             const [owner, repoName] = repo.split("/");
@@ -62,58 +61,88 @@ async function resolveLatestTag(repo: string, notFoundMessage: string): Promise<
                 owner,
                 repo: repoName,
             });
-            return data.tag_name;
+            tag = data.tag_name;
         } catch {
-            // Fall through to error
+            throw new Error(notFoundMessage);
         }
+
+        return ResolvedVersion.from_tag(tag);
     }
 
     throw new Error(notFoundMessage);
 }
 
 /** Resolves the valgrind asset name matching the given architecture and platform. */
-export async function resolveValgrindAssetName(
-    tag: string,
+export async function resolveValgrindBuilderAssetName(
+    version: Version,
     arch: string,
     platform: string,
-): Promise<string | null> {
-    const release = await getReleaseAssets(VALGRIND_REPO, tag);
-    const pattern = new RegExp(
-        `^valgrind-\\d+\\.\\d+\\.\\d+-${escapeRegex(arch)}-${escapeRegex(platform)}\\.tar\\.gz$`,
-    );
+): Promise<{ version: ResolvedVersion; name: string } | null> {
+    // This is not the version of valgrind but the version of valgrind-builder and we always want
+    // the assets from the latest valgrind-builder release.
+    const release = await getReleaseAssets(VALGRIND_BUILDER_REPO, Version.latest());
 
-    const matching = release.assets
-        .map((a) => a.name)
-        .filter((name) => pattern.test(name))
-        .sort()
-        .slice(-1);
+    // Example: valgrind-3.19.0-x86_64-ubuntu-22.04.tar.gz
+    if (version.isLatest()) {
+        const pattern = new RegExp(
+            `^valgrind-(\\d+)\\.(\\d+)\\.(\\d+)-${escapeRegex(arch)}-${escapeRegex(platform)}\\.tar\\.gz$`,
+        );
 
-    return matching[0] ?? null;
-}
+        const sorted = release.assets
+            .map((a) => a.name.match(pattern))
+            .filter((match) => match != null)
+            .map((m) => {
+                // shadows the global version
+                let version = new ResolvedVersion(+m![1], +m![2], +m![3]);
+                let name = m[0];
 
-/** Resolves a valgrind version tag, fetching "latest" from GitHub if needed. */
-export async function resolveValgrindTag(version: string): Promise<string> {
-    if (version !== "latest") {
-        return version;
+                return {
+                    version,
+                    name,
+                };
+            })
+            .sort((a, b) => {
+                const { version: versionA } = a;
+                const { version: versionB } = b;
+
+                return (
+                    versionA.major - versionB.major ||
+                    versionA.minor - versionB.minor ||
+                    versionA.patch - versionB.patch
+                );
+            });
+
+        return sorted[sorted.length - 1] ?? null;
+    } else {
+        const expected = `valgrind-${version}-${arch}-${platform}.tar.gz`;
+        const match = release.assets.find((a) => a.name === expected);
+        if (!match) {
+            return null;
+        } else {
+            return {
+                version: ResolvedVersion.from_version(version),
+                name: match.name,
+            };
+        }
     }
-    return resolveLatestTag(VALGRIND_REPO, "Could not determine latest valgrind release version");
 }
 
 /** Resolves a gungraun-runner version tag, fetching "latest" from GitHub if needed. */
-export async function resolveVersion(version: string): Promise<string> {
-    if (version !== "latest") {
+export async function resolveVersion(version: Version): Promise<ResolvedVersion> {
+    if (!version.isLatest()) {
         return version;
     }
-    return resolveLatestTag(
+
+    return await resolveLatestTag(
         GITHUB_REPO,
         "Could not determine latest release version for gungraun-runner",
     );
 }
 
 /** Resolves a valgrind version for building from source, using git ls-remote for "latest". */
-export async function resolveValgrindSourceTag(version: string): Promise<string> {
-    if (version !== "latest") {
-        return version.replace(/^v/, "");
+export async function resolveValgrindSourceTag(version: Version): Promise<ResolvedVersion> {
+    if (!version.isLatest()) {
+        return version;
     }
 
     const { stdout } = await exec.getExecOutput(
@@ -124,13 +153,10 @@ export async function resolveValgrindSourceTag(version: string): Promise<string>
         },
     );
 
-    const versions: { major: number; minor: number; patch: number }[] = [];
+    const versions: ResolvedVersion[] = [];
     for (const line of stdout.trim().split("\n")) {
         if (line.includes("^{}")) continue;
-        const match = line.match(/VALGRIND_(\d+)_(\d+)_(\d+)/);
-        if (match) {
-            versions.push({ major: +match[1], minor: +match[2], patch: +match[3] });
-        }
+        versions.push(ResolvedVersion.from_valgrind_tag(line));
     }
 
     if (versions.length === 0) {
@@ -138,6 +164,5 @@ export async function resolveValgrindSourceTag(version: string): Promise<string>
     }
 
     versions.sort((a, b) => a.major - b.major || a.minor - b.minor || a.patch - b.patch);
-    const latest = versions[versions.length - 1];
-    return `${latest.major}.${latest.minor}.${latest.patch}`;
+    return versions[versions.length - 1];
 }

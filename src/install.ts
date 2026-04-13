@@ -6,18 +6,17 @@ import * as os from "os";
 import * as path from "path";
 import { detectArch, detectPlatform, detectTarget } from "./detect";
 import {
-    downloadAndExtractGr as downloadAndExtractRunner,
+    downloadAndExtractRunner as downloadAndExtractRunner,
     downloadAndExtractValgrind,
     downloadAndExtractValgrindSource,
 } from "./download";
 import {
-    cargoVersionFormat,
-    resolveValgrindAssetName,
+    resolveValgrindBuilderAssetName,
     resolveValgrindSourceTag,
-    resolveValgrindTag,
     resolveVersion,
 } from "./resolve";
-import { getCargoBin, logInstalledVersion, bail, printError, printInfo, withGroup } from "./utils";
+import { getCargoBin, logInstalledVersion, printError, printInfo, withGroup } from "./utils";
+import { Version } from "./version";
 // TODO: reconsider the names for the strategies
 export type ValgrindStrategy = "release" | "package-manager" | "source";
 // TODO: source to compile like in binstall ?
@@ -32,6 +31,33 @@ export const VALID_RUNNER_STRATEGIES: readonly RunnerStrategy[] = ["binstall", "
 export const DEFAULT_VALGRIND_STRATEGY: string = "release,package-manager,source";
 export const DEFAULT_RUNNER_STRATEGY: string = "binstall,release,source";
 
+const VALGRIND_BUILD_DEPS: Record<string, string[]> = {
+    "apt-get": ["autoconf", "automake", "gcc", "make", "bzip2", "libc6-dbg"],
+    dnf: ["autoconf", "automake", "gcc", "make", "bzip2", "glibc-debuginfo"],
+    yum: ["autoconf", "automake", "gcc", "make", "bzip2"],
+    pacman: ["autoconf", "automake", "gcc", "make", "bzip2"],
+    zypper: ["autoconf", "automake", "gcc", "make", "bzip2", "glibc-debuginfo"],
+    apk: ["autoconf", "automake", "gcc", "make", "bzip2"],
+};
+
+const VALGRIND_PACKAGES: Record<string, string[]> = {
+    "apt-get": ["valgrind", "libc6-dbg"],
+    dnf: ["valgrind", "glibc-debuginfo"],
+    yum: ["valgrind"],
+    pacman: ["valgrind"],
+    zypper: ["valgrind", "glibc-debuginfo"],
+    apk: ["valgrind"],
+};
+
+const DEBUGINFO_PACKAGES: Record<string, string[]> = {
+    "apt-get": ["libc6-dbg"],
+    dnf: ["glibc-debuginfo"],
+    yum: [],
+    pacman: [],
+    zypper: ["glibc-debuginfo"],
+    apk: [],
+};
+
 export function getRunnerInstallDir(): { dir: string; needsExport: boolean } | null {
     if (process.env.CARGO_INSTALL_ROOT) {
         return { dir: `${process.env.CARGO_INSTALL_ROOT}/bin`, needsExport: false };
@@ -45,6 +71,7 @@ export function getRunnerInstallDir(): { dir: string; needsExport: boolean } | n
     if (process.env.RUNNER_TEMP) {
         return { dir: `${process.env.RUNNER_TEMP}/.cargo/bin`, needsExport: true };
     }
+
     return null;
 }
 
@@ -60,12 +87,12 @@ export function parseStrategies<T extends string>(
 
     for (const s of strategies) {
         if (!valid.includes(s)) {
-            bail(`Invalid ${label} strategy '${s}'. Valid values: ${valid.join(", ")}`);
+            throw new Error(`Invalid ${label} strategy '${s}'. Valid values: ${valid.join(", ")}`);
         }
     }
 
     if (strategies.length === 0) {
-        bail(`No ${label} strategies specified`);
+        throw new Error(`No ${label} strategies specified`);
     }
 
     return strategies;
@@ -75,14 +102,15 @@ async function findBinary(dir: string, name: string): Promise<string | null> {
     const entries = fs.readdirSync(dir, { withFileTypes: true, recursive: true });
     for (const entry of entries) {
         if (entry.isFile() && entry.name === name) {
-            return path.join(entry.parentPath || dir, entry.name);
+            // The deprecation warning is ok. This supports node versions down to 18.17
+            return path.join(entry.parentPath ?? entry.path, entry.name);
         }
     }
     return null;
 }
 
 /** Installs the gungraun-runner by trying each strategy in order until one succeeds. */
-export async function installRunner(version: string, strategies: RunnerStrategy[]): Promise<void> {
+export async function installRunner(version: Version, strategies: RunnerStrategy[]): Promise<void> {
     for (const strategy of strategies) {
         switch (strategy) {
             case "binstall": {
@@ -101,24 +129,24 @@ export async function installRunner(version: string, strategies: RunnerStrategy[
                 break;
             }
             default: {
-                bail(`Invalid strategy '${strategy}'`);
+                throw new Error(`Invalid strategy '${strategy}'`);
             }
         }
 
         printError(`Runner strategy '${strategy}' failed`);
     }
 
-    bail("All runner install strategies failed");
+    throw new Error("All runner install strategies failed");
 }
 
 /** Installs gungraun-runner from a GitHub release archive. */
-export async function installRunnerFromRelease(version: string): Promise<boolean> {
+export async function installRunnerFromRelease(version: Version): Promise<boolean> {
     const target = await detectTarget();
 
     return withGroup(`Downloading gungraun-runner '${version}'`, async () => {
         try {
-            const tag = await resolveVersion(version);
-            const extractDir = await downloadAndExtractRunner(tag, target);
+            const resolvedVersion = await resolveVersion(version);
+            const extractDir = await downloadAndExtractRunner(resolvedVersion, target);
 
             const binaryPath = path.join(extractDir, "gungraun-runner");
             if (!fs.existsSync(binaryPath)) {
@@ -134,7 +162,7 @@ export async function installRunnerFromRelease(version: string): Promise<boolean
                 printError("Unable to find a installation directory for gungraun-runner");
                 return false;
             }
-            const { dir: installDir, needsExport } = result!;
+            const { dir: installDir, needsExport } = result;
 
             await exec.exec("chmod", ["+x", binaryPath]);
 
@@ -149,11 +177,10 @@ export async function installRunnerFromRelease(version: string): Promise<boolean
                 core.exportVariable("GUNGRAUN_RUNNER", path.join(installDir, "gungraun-runner"));
             }
 
-            const normalized = tag[0] === "v" ? tag.slice(1) : tag;
             await logInstalledVersion(
                 path.join(installDir, "gungraun-runner"),
                 "gungraun-runner",
-                `gungraun-runner ${normalized}`,
+                `gungraun-runner ${resolvedVersion}`,
             );
 
             return true;
@@ -168,25 +195,25 @@ export async function installRunnerFromRelease(version: string): Promise<boolean
 }
 
 /** Installs gungraun-runner from source via cargo install. */
-export async function installRunnerFromSource(version: string): Promise<boolean> {
+export async function installRunnerFromSource(version: Version): Promise<boolean> {
     return withGroup("Installing gungraun-runner via cargo install", async () => {
         try {
-            const formatted = cargoVersionFormat(version);
-            const args = ["install", "gungraun-runner"];
-            if (formatted) {
-                args.push("--version", formatted);
-            }
-            await exec.exec(getCargoBin(), args);
-
-            if (formatted) {
-                await logInstalledVersion(
-                    "gungraun-runner",
-                    "gungraun-runner",
-                    `gungraun-runner ${formatted}`,
-                );
+            if (version.isLatest()) {
+                await exec.exec(getCargoBin(), ["install", "gungraun-runner"]);
             } else {
-                await logInstalledVersion("gungraun-runner", "gungraun-runner");
+                await exec.exec(getCargoBin(), [
+                    "install",
+                    "gungraun-runner",
+                    "--version",
+                    version.toString(),
+                ]);
             }
+
+            await logInstalledVersion(
+                "gungraun-runner",
+                "gungraun-runner",
+                `gungraun-runner ${version}`,
+            );
 
             return true;
         } catch (error) {
@@ -200,34 +227,29 @@ export async function installRunnerFromSource(version: string): Promise<boolean>
 }
 
 /** Installs gungraun-runner via cargo-binstall if available. */
-export async function installRunnerWithBinstall(version: string): Promise<boolean> {
+export async function installRunnerWithBinstall(version: Version): Promise<boolean> {
     if (!(await io.which("cargo-binstall", false))) {
         return false;
     }
 
     return withGroup("Installing gungraun-runner via cargo-binstall", async () => {
         try {
-            const formatted = cargoVersionFormat(version);
             const args = ["binstall", "-y", "--disable-strategies", "compile"];
-            if (formatted) {
-                args.push(`gungraun-runner@${formatted}`);
-            } else {
+            if (version.isLatest()) {
                 args.push("gungraun-runner");
+            } else {
+                args.push(`gungraun-runner@${version}`);
             }
 
             await exec.exec(getCargoBin(), args);
 
-            const grPath = await io.which("gungraun-runner", false);
-            if (grPath) {
-                if (formatted) {
-                    await logInstalledVersion(
-                        "gungraun-runner",
-                        "gungraun-runner",
-                        `gungraun-runner ${formatted}`,
-                    );
-                } else {
-                    await logInstalledVersion("gungraun-runner", "gungraun-runner");
-                }
+            const runnerPath = await io.which("gungraun-runner", false);
+            if (runnerPath) {
+                await logInstalledVersion(
+                    "gungraun-runner",
+                    "gungraun-runner",
+                    `gungraun-runner ${version}`,
+                );
             }
 
             return true;
@@ -243,13 +265,14 @@ export async function installRunnerWithBinstall(version: string): Promise<boolea
 
 /** Installs valgrind by trying each strategy in order until one succeeds. */
 export async function installValgrind(
+    version: Version,
     strategies: ValgrindStrategy[],
     installBuildDeps: boolean = false,
 ): Promise<void> {
     for (const strategy of strategies) {
         switch (strategy) {
             case "release": {
-                const result = await installValgrindFromBuilder();
+                const result = await installValgrindFromBuilder(version);
                 if (result) return;
                 break;
             }
@@ -259,43 +282,48 @@ export async function installValgrind(
                 break;
             }
             case "source": {
-                const result = await installValgrindFromSource(installBuildDeps);
+                const result = await installValgrindFromSource(version, installBuildDeps);
                 if (result) return;
                 break;
             }
             default: {
-                bail(`Invalid strategy '${strategy}'`);
+                throw new Error(`Invalid strategy '${strategy}'`);
             }
         }
 
         printError(`Valgrind strategy '${strategy}' failed`);
     }
 
-    bail("All valgrind installation strategies failed");
+    throw new Error("All valgrind installation strategies failed");
 }
 
-// FIX: install libc6-dbg, ...
 /** Installs valgrind from the gungraun/valgrind-builder GitHub release. */
-export async function installValgrindFromBuilder(): Promise<boolean> {
+export async function installValgrindFromBuilder(version: Version): Promise<boolean> {
     const target = await detectTarget();
     const arch = detectArch(target);
-    const { platform } = detectPlatform();
+    const { packageManager, platform } = detectPlatform();
 
-    return withGroup("Installing valgrind from release", async () => {
+    return withGroup("Installing valgrind from builder", async () => {
         try {
-            const tag = await resolveValgrindTag(process.env.VALGRIND_VERSION || "latest");
-            const assetName = await resolveValgrindAssetName(tag, arch, platform);
-            if (!assetName) {
-                printError(`No valgrind release found for ${arch}-${platform}`);
+            const result = await resolveValgrindBuilderAssetName(version, arch, platform);
+            if (!result) {
+                printError(
+                    `No valgrind builder release found for valgrind version ${version} (${arch}-${platform})`,
+                );
                 return false;
             }
 
-            printInfo(`Downloading valgrind ${tag} (${assetName})`);
-            const extractDir = await downloadAndExtractValgrind(tag, assetName);
+            const { version: resolvedVersion, name: assetName } = result;
+            printInfo(`Downloading valgrind builder asset '${assetName}'`);
+            const extractDir = await downloadAndExtractValgrind(resolvedVersion, assetName);
 
             await exec.exec("sudo", ["tar", "-xzf", path.join(extractDir, assetName), "-C", "/"]);
 
             await logInstalledVersion("valgrind", "valgrind");
+
+            if (packageManager) {
+                await installWithPackageManager(packageManager, DEBUGINFO_PACKAGES[packageManager]);
+            }
 
             return true;
         } catch (error) {
@@ -305,15 +333,6 @@ export async function installValgrindFromBuilder(): Promise<boolean> {
         }
     });
 }
-
-const VALGRIND_PACKAGES: Record<string, string[]> = {
-    "apt-get": ["valgrind", "libc6-dbg"],
-    dnf: ["valgrind", "glibc-debuginfo"],
-    yum: ["valgrind"],
-    pacman: ["valgrind"],
-    zypper: ["valgrind", "glibc-debuginfo"],
-    apk: ["valgrind"],
-};
 
 /** Installs valgrind using the system package manager. */
 export async function installValgrindWithPackageManager(): Promise<boolean> {
@@ -343,16 +362,6 @@ export async function installValgrindWithPackageManager(): Promise<boolean> {
         }
     });
 }
-
-const VALGRIND_BUILD_DEPS: Record<string, string[]> = {
-    "apt-get": ["autoconf", "automake", "gcc", "make", "bzip2", "libc6-dbg"],
-    dnf: ["autoconf", "automake", "gcc", "make", "bzip2", "glibc-debuginfo"],
-    yum: ["autoconf", "automake", "gcc", "make", "bzip2"],
-    pacman: ["autoconf", "automake", "gcc", "make", "bzip2"],
-    zypper: ["autoconf", "automake", "gcc", "make", "bzip2", "glibc-debuginfo"],
-    apk: ["autoconf", "automake", "gcc", "make", "bzip2"],
-};
-
 /** Installs build dependencies required to compile valgrind from source. */
 export async function installValgrindBuildDeps(): Promise<boolean> {
     const { packageManager } = detectPlatform();
@@ -381,16 +390,14 @@ export async function installValgrindBuildDeps(): Promise<boolean> {
     });
 }
 
-// FIX: install libc6-dbg, ...
 /** Installs valgrind from the source tarball. */
 export async function installValgrindFromSource(
+    version: Version,
     installBuildDeps: boolean = false,
 ): Promise<boolean> {
     return withGroup("Installing valgrind from source", async () => {
         try {
-            const version = await resolveValgrindSourceTag(
-                process.env.VALGRIND_VERSION || "latest",
-            );
+            const resolvedVersion = await resolveValgrindSourceTag(version);
 
             if (installBuildDeps) {
                 const depsResult = await installValgrindBuildDeps();
@@ -400,8 +407,8 @@ export async function installValgrindFromSource(
                 }
             }
 
-            const extractDir = await downloadAndExtractValgrindSource(version);
-            const sourceDir = path.join(extractDir, `valgrind-${version}`);
+            const extractDir = await downloadAndExtractValgrindSource(resolvedVersion);
+            const sourceDir = path.join(extractDir, `valgrind-${resolvedVersion}`);
 
             await exec.exec("./autogen.sh", [], { cwd: sourceDir });
             // TODO: valgrind-configure-args in action.yml
@@ -412,7 +419,13 @@ export async function installValgrindFromSource(
             await exec.exec("make", [`-j${ncpus}`, "BUILD_DOCS=none"], { cwd: sourceDir });
             await exec.exec("sudo", ["make", "install"], { cwd: sourceDir });
 
-            await logInstalledVersion("valgrind", "valgrind", `valgrind-${version}`);
+            await logInstalledVersion("valgrind", "valgrind", `valgrind-${resolvedVersion}`);
+
+            const { packageManager } = detectPlatform();
+            if (packageManager) {
+                await installWithPackageManager(packageManager, DEBUGINFO_PACKAGES[packageManager]);
+            }
+
             return true;
         } catch (error) {
             printError(`Failed to install valgrind from source: ${(error as Error).message}`);
@@ -425,31 +438,33 @@ export async function installWithPackageManager(
     packageManager: string,
     packages: string[],
 ): Promise<void> {
-    switch (packageManager) {
-        case "apt-get":
-            await exec.exec("sudo", ["apt-get", "update", "-qq"]);
-            await exec.exec("sudo", ["apt-get", "install", "-y", "-qq", ...packages]);
-            break;
-        case "dnf":
-            await exec.exec("sudo", ["dnf", "install", "-y", ...packages]);
-            break;
-        case "yum":
-            try {
-                await exec.exec("sudo", ["yum", "install", "-y", ...packages]);
-            } catch {
+    if (packages.length > 0) {
+        switch (packageManager) {
+            case "apt-get":
+                await exec.exec("sudo", ["apt-get", "update", "-qq"]);
+                await exec.exec("sudo", ["apt-get", "install", "-y", "-qq", ...packages]);
+                break;
+            case "dnf":
                 await exec.exec("sudo", ["dnf", "install", "-y", ...packages]);
-            }
-            break;
-        case "pacman":
-            await exec.exec("sudo", ["pacman", "-S", "--noconfirm", ...packages]);
-            break;
-        case "zypper":
-            await exec.exec("sudo", ["zypper", "--non-interactive", "install", ...packages]);
-            break;
-        case "apk":
-            await exec.exec("sudo", ["apk", "add", ...packages]);
-            break;
-        default:
-            throw `Unsupported package manager: ${packageManager}`;
+                break;
+            case "yum":
+                try {
+                    await exec.exec("sudo", ["yum", "install", "-y", ...packages]);
+                } catch {
+                    await exec.exec("sudo", ["dnf", "install", "-y", ...packages]);
+                }
+                break;
+            case "pacman":
+                await exec.exec("sudo", ["pacman", "-S", "--noconfirm", ...packages]);
+                break;
+            case "zypper":
+                await exec.exec("sudo", ["zypper", "--non-interactive", "install", ...packages]);
+                break;
+            case "apk":
+                await exec.exec("sudo", ["apk", "add", ...packages]);
+                break;
+            default:
+                throw new Error(`Unsupported package manager: ${packageManager}`);
+        }
     }
 }

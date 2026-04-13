@@ -5,7 +5,7 @@ import * as exec from "@actions/exec";
 export const GITHUB_REPO = "gungraun/gungraun";
 
 /** GitHub repository for valgrind-builder releases. */
-export const VALGRIND_REPO = "gungraun/valgrind-builder";
+export const VALGRIND_BUILDER_REPO = "gungraun/valgrind-builder";
 
 /** Ends the current log group. */
 export function endGroup(): void {
@@ -34,6 +34,11 @@ export async function logInstalledVersion(
 export function bail(message: string): never {
     core.setFailed(message);
     process.exit(1);
+}
+
+/** Escapes special regex characters in a string. */
+export function escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** Logs a error message. */
