@@ -1,7 +1,13 @@
-import { cargoVersionFormat, escapeRegex, resolveVersion, resolveValgrindTag } from "../resolve";
+import { cargoVersionFormat, escapeRegex, resolveVersion, resolveValgrindTag, resolveValgrindSourceTag } from "../resolve";
+import * as exec from "@actions/exec";
 import { getOctokit } from "@actions/github";
 
 jest.mock("@actions/github");
+
+jest.mock("@actions/exec", () => ({
+    exec: jest.fn().mockResolvedValue(0),
+    getExecOutput: jest.fn().mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 }),
+}));
 
 const mockGetLatestRelease = jest.fn();
 (getOctokit as jest.Mock).mockReturnValue({
@@ -130,5 +136,96 @@ describe("resolveValgrindTag", () => {
         );
 
         process.env.GITHUB_TOKEN = originalToken;
+    });
+});
+
+describe("resolveValgrindSourceTag", () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it("returns version with v prefix stripped when not 'latest'", async () => {
+        const result = await resolveValgrindSourceTag("v3.20.0");
+        expect(result).toBe("3.20.0");
+    });
+
+    it("returns version unchanged when no v prefix", async () => {
+        const result = await resolveValgrindSourceTag("3.20.0");
+        expect(result).toBe("3.20.0");
+    });
+
+    it("resolves 'latest' from git ls-remote output", async () => {
+        const mockOutput = [
+            "abc123\trefs/tags/VALGRIND_3_24_0",
+            "def456\trefs/tags/VALGRIND_3_25_0",
+            "ghi789\trefs/tags/VALGRIND_3_25_1",
+            "jkl012\trefs/tags/VALGRIND_3_26_0",
+        ].join("\n");
+        (exec.getExecOutput as jest.Mock).mockResolvedValue({
+            stdout: mockOutput,
+            stderr: "",
+            exitCode: 0,
+        });
+
+        const result = await resolveValgrindSourceTag("latest");
+        expect(result).toBe("3.26.0");
+    });
+
+    it("ignores annotated tag ^{} entries", async () => {
+        const mockOutput = [
+            "abc123\trefs/tags/VALGRIND_3_26_0",
+            "abc123\trefs/tags/VALGRIND_3_26_0^{}",
+        ].join("\n");
+        (exec.getExecOutput as jest.Mock).mockResolvedValue({
+            stdout: mockOutput,
+            stderr: "",
+            exitCode: 0,
+        });
+
+        const result = await resolveValgrindSourceTag("latest");
+        expect(result).toBe("3.26.0");
+    });
+
+    it("ignores svn-prefixed tags", async () => {
+        const mockOutput = [
+            "abc123\trefs/tags/svn/VALGRIND_3_12_0",
+            "def456\trefs/tags/VALGRIND_3_26_0",
+        ].join("\n");
+        (exec.getExecOutput as jest.Mock).mockResolvedValue({
+            stdout: mockOutput,
+            stderr: "",
+            exitCode: 0,
+        });
+
+        const result = await resolveValgrindSourceTag("latest");
+        expect(result).toBe("3.26.0");
+    });
+
+    it("sorts versions by semver and returns the highest", async () => {
+        const mockOutput = [
+            "aaa\trefs/tags/VALGRIND_3_9_0",
+            "bbb\trefs/tags/VALGRIND_3_10_0",
+            "ccc\trefs/tags/VALGRIND_3_26_0",
+        ].join("\n");
+        (exec.getExecOutput as jest.Mock).mockResolvedValue({
+            stdout: mockOutput,
+            stderr: "",
+            exitCode: 0,
+        });
+
+        const result = await resolveValgrindSourceTag("latest");
+        expect(result).toBe("3.26.0");
+    });
+
+    it("throws when no valgrind tags found", async () => {
+        (exec.getExecOutput as jest.Mock).mockResolvedValue({
+            stdout: "",
+            stderr: "",
+            exitCode: 0,
+        });
+
+        await expect(resolveValgrindSourceTag("latest")).rejects.toThrow(
+            "Could not determine latest valgrind version from sourceware.org",
+        );
     });
 });

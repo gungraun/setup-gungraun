@@ -11,3 +11,4 @@ noconfirm
 pacman
 pkgid
 rustc
+sourceware

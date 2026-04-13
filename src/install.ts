@@ -4,7 +4,6 @@ import * as fs from "fs";
 import * as io from "@actions/io";
 import * as os from "os";
 import * as path from "path";
-import * as tc from "@actions/tool-cache";
 import { detectArch, detectPlatform, detectTarget } from "./detect";
 import {
     downloadAndExtractGr as downloadAndExtractRunner,
@@ -14,6 +13,7 @@ import {
 import {
     cargoVersionFormat,
     resolveValgrindAssetName,
+    resolveValgrindSourceTag,
     resolveValgrindTag,
     resolveVersion,
 } from "./resolve";
@@ -388,8 +388,9 @@ export async function installValgrindFromSource(
 ): Promise<boolean> {
     return withGroup("Installing valgrind from source", async () => {
         try {
-            const tag = await resolveValgrindTag(process.env.VALGRIND_VERSION || "latest");
-            const version = tag[0] === "v" ? tag.slice(1) : tag;
+            const version = await resolveValgrindSourceTag(
+                process.env.VALGRIND_VERSION || "latest",
+            );
 
             if (installBuildDeps) {
                 const depsResult = await installValgrindBuildDeps();

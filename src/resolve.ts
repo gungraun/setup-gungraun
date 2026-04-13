@@ -1,5 +1,8 @@
+import * as exec from "@actions/exec";
 import { getOctokit } from "@actions/github";
 import { GITHUB_REPO, VALGRIND_REPO } from "./utils";
+
+const VALGRIND_SOURCE_REPO = "https://sourceware.org/git/valgrind.git";
 
 interface ReleaseAsset {
     name: string;
@@ -105,4 +108,36 @@ export async function resolveVersion(version: string): Promise<string> {
         GITHUB_REPO,
         "Could not determine latest release version for gungraun-runner",
     );
+}
+
+/** Resolves a valgrind version for building from source, using git ls-remote for "latest". */
+export async function resolveValgrindSourceTag(version: string): Promise<string> {
+    if (version !== "latest") {
+        return version.replace(/^v/, "");
+    }
+
+    const { stdout } = await exec.getExecOutput(
+        "git",
+        ["ls-remote", "--tags", VALGRIND_SOURCE_REPO],
+        {
+            silent: true,
+        },
+    );
+
+    const versions: { major: number; minor: number; patch: number }[] = [];
+    for (const line of stdout.trim().split("\n")) {
+        if (line.includes("^{}")) continue;
+        const match = line.match(/VALGRIND_(\d+)_(\d+)_(\d+)/);
+        if (match) {
+            versions.push({ major: +match[1], minor: +match[2], patch: +match[3] });
+        }
+    }
+
+    if (versions.length === 0) {
+        throw new Error("Could not determine latest valgrind version from sourceware.org");
+    }
+
+    versions.sort((a, b) => a.major - b.major || a.minor - b.minor || a.patch - b.patch);
+    const latest = versions[versions.length - 1];
+    return `${latest.major}.${latest.minor}.${latest.patch}`;
 }
