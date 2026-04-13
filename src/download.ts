@@ -28,10 +28,24 @@ async function downloadAndExtractRelease(
 
     if (shaAsset) {
         const shaPath = await tc.downloadTool(shaAsset.browserDownloadUrl);
-        await verifySha256(archivePath, shaPath, assetName);
+        await verifySha("256", archivePath, shaPath, assetName);
     }
 
     const extractDir = await tc.extractTar(archivePath);
+    return extractDir;
+}
+
+export async function downloadAndExtractValgrindSource(version: string): Promise<string> {
+    const assetName = `valgrind-${version}.tar.bz2`;
+    const tarballUrl = `https://sourceware.org/pub/valgrind/${assetName}`;
+    const shaSumsUrl = `https://sourceware.org/pub/valgrind/sha512.sum`;
+
+    const archivePath = await tc.downloadTool(tarballUrl);
+    const shaAsset = await tc.downloadTool(shaSumsUrl);
+
+    await verifySha("512", archivePath, shaAsset, assetName);
+
+    const extractDir = await tc.extractTar(archivePath, undefined, "xj");
     return extractDir;
 }
 
@@ -40,25 +54,37 @@ export async function downloadAndExtractValgrind(tag: string, assetName: string)
     return downloadAndExtractRelease(VALGRIND_REPO, tag, assetName);
 }
 
-async function verifySha256(
+async function verifySha(
+    hash: "256" | "512",
     archivePath: string,
     shaFilePath: string,
     expectedName: string,
 ): Promise<void> {
     const shaContent = fs.readFileSync(shaFilePath, "utf-8").trim();
-    const parts = shaContent.split(/\s+/);
-    const expectedHash = parts[0];
+
+    const expectedHash = shaContent
+        .split(/\r?\n/)
+        .map((line) => line.split(/\s+/))
+        .filter((parts) => parts.length >= 2)
+        .find(([, ...nameParts]) => {
+            const name = nameParts.join(" ").replace(/^\*/, "");
+            return name === expectedName || name.endsWith(`/${expectedName}`);
+        })?.[0];
+
+    if (!expectedHash) {
+        throw new Error(`Could not find SHA-${hash} entry for ${expectedName} in checksum file`);
+    }
 
     const actualHash = crypto
-        .createHash("sha256")
+        .createHash("sha" + hash)
         .update(fs.readFileSync(archivePath))
         .digest("hex");
 
     if (actualHash !== expectedHash) {
         throw new Error(
-            `SHA-256 verification failed for ${expectedName}\nExpected: ${expectedHash}\nActual:   ${actualHash}`,
+            `SHA-${hash} verification failed for ${expectedName}\nExpected: ${expectedHash}\nActual:   ${actualHash}`,
         );
     }
 
-    printInfo(`SHA-256 verified for ${expectedName}`);
+    printInfo(`SHA-${hash} verified for ${expectedName}`);
 }

@@ -59,10 +59,22 @@ jest.mock("fs", () => ({
     existsSync: jest.fn().mockReturnValue(true),
     readdirSync: jest.fn().mockReturnValue([]),
     readFileSync: jest.fn().mockReturnValue(""),
+    mkdirSync: jest.fn(),
+}));
+
+jest.mock("os", () => ({
+    tmpdir: jest.fn().mockReturnValue("/tmp"),
+    cpus: jest.fn().mockReturnValue(Array(4)),
+}));
+
+jest.mock("@actions/tool-cache", () => ({
+    downloadTool: jest.fn().mockResolvedValue("/tmp/valgrind-archive.tar.bz2"),
+    extractTar: jest.fn().mockResolvedValue("/tmp/valgrind-extract"),
 }));
 
 import * as exec from "@actions/exec";
 import * as io from "@actions/io";
+import * as tc from "@actions/tool-cache";
 import { cargoVersionFormat } from "../resolve";
 import { detectPlatform } from "../detect";
 import { getCargoBin } from "../utils";
@@ -70,6 +82,8 @@ import {
     installRunnerWithBinstall,
     installRunnerFromSource,
     installValgrindWithPackageManager,
+    installValgrindFromSource,
+    installValgrindBuildDeps,
     installValgrind,
     installRunner,
     parseStrategies,
@@ -81,15 +95,17 @@ import {
 const mockExec = exec.exec as jest.Mock;
 const mockWhich = io.which as jest.Mock;
 const mockDetectPlatform = detectPlatform as jest.Mock;
+const mockDownloadTool = tc.downloadTool as jest.Mock;
+const mockExtractTar = tc.extractTar as jest.Mock;
 
 describe("parseStrategies", () => {
     it("parses a comma-separated list of valid strategies", () => {
         const result = parseStrategies(
-            "release,package-manager",
+            "release,package-manager,source",
             VALID_VALGRIND_STRATEGIES,
             "valgrind",
         );
-        expect(result).toEqual(["release", "package-manager"]);
+        expect(result).toEqual(["release", "package-manager", "source"]);
     });
 
     it("trims whitespace around strategies", () => {
@@ -432,6 +448,161 @@ describe("installValgrindWithPackageManager", () => {
         });
 
         const result = await installValgrindWithPackageManager();
+
+        expect(result).toBe(false);
+    });
+});
+
+describe("installValgrindBuildDeps", () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        mockExec.mockResolvedValue(0);
+    });
+
+    it("installs build deps with apt-get on ubuntu", async () => {
+        mockDetectPlatform.mockReturnValue({
+            id: "ubuntu",
+            versionId: "22.04",
+            platform: "ubuntu-22.04",
+            packageManager: "apt-get",
+        });
+
+        const result = await installValgrindBuildDeps();
+
+        expect(result).toBe(true);
+        expect(mockExec).toHaveBeenCalledWith("sudo", ["apt-get", "update", "-qq"]);
+        expect(mockExec).toHaveBeenCalledWith("sudo", [
+            "apt-get",
+            "install",
+            "-y",
+            "-qq",
+            "autoconf",
+            "automake",
+            "gcc",
+            "make",
+            "wget",
+            "bzip2",
+            "libc6-dbg",
+        ]);
+    });
+
+    it("installs build deps with dnf on fedora", async () => {
+        mockDetectPlatform.mockReturnValue({
+            id: "fedora",
+            versionId: "39",
+            platform: "fedora-39",
+            packageManager: "dnf",
+        });
+
+        const result = await installValgrindBuildDeps();
+
+        expect(result).toBe(true);
+        expect(mockExec).toHaveBeenCalledWith("sudo", [
+            "dnf",
+            "install",
+            "-y",
+            "autoconf",
+            "automake",
+            "gcc",
+            "make",
+            "wget",
+            "bzip2",
+            "glibc-debuginfo",
+        ]);
+    });
+
+    it("installs build deps with pacman on arch", async () => {
+        mockDetectPlatform.mockReturnValue({
+            id: "arch",
+            versionId: "rolling",
+            platform: "arch-rolling",
+            packageManager: "pacman",
+        });
+
+        const result = await installValgrindBuildDeps();
+
+        expect(result).toBe(true);
+        expect(mockExec).toHaveBeenCalledWith("sudo", [
+            "pacman",
+            "-S",
+            "--noconfirm",
+            "autoconf",
+            "automake",
+            "gcc",
+            "make",
+            "wget",
+            "bzip2",
+        ]);
+    });
+
+    it("returns false on unsupported package manager", async () => {
+        mockDetectPlatform.mockReturnValue({
+            id: "gentoo",
+            versionId: "2.14",
+            platform: "gentoo-2.14",
+            packageManager: null,
+        });
+
+        const result = await installValgrindBuildDeps();
+
+        expect(result).toBe(false);
+    });
+});
+
+describe("installValgrindFromSource", () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        mockExec.mockResolvedValue(0);
+    });
+
+    it("builds valgrind from source with resolved tag", async () => {
+        const result = await installValgrindFromSource(false);
+
+        expect(result).toBe(true);
+        expect(mockDownloadTool).toHaveBeenCalledWith("https://sourceware.org/pub/valgrind/valgrind-3.20.0.tar.bz2");
+        expect(mockExtractTar).toHaveBeenCalledWith("/tmp/valgrind-archive.tar.bz2", undefined, "xj");
+        expect(mockExec).toHaveBeenCalledWith("./autogen.sh", [], expect.objectContaining({ cwd: "/tmp/valgrind-extract/valgrind-3.20.0" }));
+        expect(mockExec).toHaveBeenCalledWith("./configure", ["--enable-tls", "--prefix=/usr"], expect.objectContaining({ cwd: "/tmp/valgrind-extract/valgrind-3.20.0" }));
+        expect(mockExec).toHaveBeenCalledWith("make", ["-j4", "BUILD_DOCS=none"], expect.objectContaining({ cwd: "/tmp/valgrind-extract/valgrind-3.20.0" }));
+        expect(mockExec).toHaveBeenCalledWith("sudo", ["make", "install"], expect.objectContaining({ cwd: "/tmp/valgrind-extract/valgrind-3.20.0" }));
+    });
+
+    it("installs build deps when installBuildDeps is true", async () => {
+        mockDetectPlatform.mockReturnValue({
+            id: "ubuntu",
+            versionId: "22.04",
+            platform: "ubuntu-22.04",
+            packageManager: "apt-get",
+        });
+
+        const result = await installValgrindFromSource(true);
+
+        expect(result).toBe(true);
+        expect(mockExec).toHaveBeenCalledWith("sudo", ["apt-get", "update", "-qq"]);
+        expect(mockExec).toHaveBeenCalledWith("sudo", expect.arrayContaining(["apt-get", "install", "-y", "-qq"]));
+    });
+
+    it("continues without build deps when installBuildDeps is false", async () => {
+        const result = await installValgrindFromSource(false);
+
+        expect(result).toBe(true);
+        expect(mockExec).not.toHaveBeenCalledWith("sudo", expect.arrayContaining(["apt-get", "update"]));
+    });
+
+    it("strips v prefix from version tag", async () => {
+        const { resolveValgrindTag } = require("../resolve");
+        (resolveValgrindTag as jest.Mock).mockResolvedValueOnce("3.26.0");
+
+        const result = await installValgrindFromSource(false);
+
+        expect(result).toBe(true);
+        expect(mockDownloadTool).toHaveBeenCalledWith("https://sourceware.org/pub/valgrind/valgrind-3.26.0.tar.bz2");
+    });
+
+    it("returns false on build failure", async () => {
+        mockExec.mockRejectedValueOnce(new Error("build failed"));
+
+        const result = await installValgrindFromSource(false);
 
         expect(result).toBe(false);
     });

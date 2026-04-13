@@ -1,9 +1,12 @@
 armv7
 binstall
+debuginfo
 endgroup
 gungraun
 INSTALL_DIR
+libc6
 linuxmint
+ncpus
 noconfirm
 pacman
 pkgid

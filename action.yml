@@ -20,9 +20,13 @@ inputs:
     required: false
     default: "latest"
   valgrind-strategy:
-    description: "Ordered comma-separated list of valgrind install strategies to try. Valid values: release, package-manager"
+    description: "Ordered comma-separated list of valgrind install strategies to try. Valid values: release, package-manager, source"
     required: false
-    default: "release,package-manager"
+    default: "release,package-manager,source"
+  install-build-deps:
+    description: "Install build dependencies before building valgrind from source"
+    required: false
+    default: "false"
   runner-strategy:
     description: "Ordered comma-separated list of runner install strategies to try. Valid values: binstall, release, source"
     required: false

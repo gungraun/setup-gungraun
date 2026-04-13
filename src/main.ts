@@ -44,6 +44,7 @@ async function run(): Promise<void> {
         VALID_VALGRIND_STRATEGIES,
         "valgrind",
     );
+    const installBuildDeps = core.getBooleanInput("install-build-deps");
     const runnerStrategies = parseStrategies<RunnerStrategy>(
         core.getInput("runner-strategy") || DEFAULT_RUNNER_STRATEGY,
         VALID_RUNNER_STRATEGIES,
@@ -58,7 +59,7 @@ async function run(): Promise<void> {
         });
         printInfo(`Valgrind already installed: ${stdout.trim()} (${valgrindPath})`);
     } else {
-        await installValgrind(valgrindStrategies);
+        await installValgrind(valgrindStrategies, installBuildDeps);
     }
 
     await installRunner(runnerVersion, runnerStrategies);
