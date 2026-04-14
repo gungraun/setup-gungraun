@@ -1,5 +1,7 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
+import * as fs from "fs";
+import * as path from "path";
 
 /** GitHub repository for gungraun-runner releases. */
 export const GITHUB_REPO = "gungraun/gungraun";
@@ -39,6 +41,17 @@ export function bail(message: string): never {
 /** Escapes special regex characters in a string. */
 export function escapeRegex(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export async function findBinary(dir: string, name: string): Promise<string | null> {
+    const entries = fs.readdirSync(dir, { withFileTypes: true, recursive: true });
+    for (const entry of entries) {
+        if (entry.isFile() && entry.name === name) {
+            // The deprecation warning is ok. This supports node versions down to 18.17
+            return path.join(entry.parentPath ?? entry.path, entry.name);
+        }
+    }
+    return null;
 }
 
 /** Logs a error message. */

@@ -16,13 +16,12 @@ interface ReleaseInfo {
 }
 
 /** Fetches release assets for a given repo and tag from the GitHub API. */
-export async function getReleaseAssets(repo: string, version: Version): Promise<ReleaseInfo> {
-    const token = process.env.GITHUB_TOKEN;
-    if (!token) {
-        throw new Error("GITHUB_TOKEN is required for GitHub API calls");
-    }
-
-    const octokit = getOctokit(token);
+export async function getReleaseAssets(
+    repo: string,
+    version: Version,
+    githubToken: string,
+): Promise<ReleaseInfo> {
+    const octokit = getOctokit(githubToken);
     const [owner, repoName] = repo.split("/");
 
     let release: {
@@ -50,26 +49,25 @@ export async function getReleaseAssets(repo: string, version: Version): Promise<
     };
 }
 
-async function resolveLatestTag(repo: string, notFoundMessage: string): Promise<ResolvedVersion> {
-    const token = process.env.GITHUB_TOKEN;
-    if (token) {
-        let tag: string;
-        try {
-            const octokit = getOctokit(token);
-            const [owner, repoName] = repo.split("/");
-            const { data } = await octokit.rest.repos.getLatestRelease({
-                owner,
-                repo: repoName,
-            });
-            tag = data.tag_name;
-        } catch {
-            throw new Error(notFoundMessage);
-        }
-
-        return ResolvedVersion.from_tag(tag);
+async function resolveLatestTag(
+    repo: string,
+    notFoundMessage: string,
+    githubToken: string,
+): Promise<ResolvedVersion> {
+    let tag: string;
+    try {
+        const octokit = getOctokit(githubToken);
+        const [owner, repoName] = repo.split("/");
+        const { data } = await octokit.rest.repos.getLatestRelease({
+            owner,
+            repo: repoName,
+        });
+        tag = data.tag_name;
+    } catch (error) {
+        throw new Error(notFoundMessage + `: ${(error as Error).message}`);
     }
 
-    throw new Error(notFoundMessage);
+    return ResolvedVersion.from_tag(tag);
 }
 
 /** Resolves the valgrind asset name matching the given architecture and platform. */
@@ -77,10 +75,11 @@ export async function resolveValgrindBuilderAssetName(
     version: Version,
     arch: string,
     platform: string,
+    githubToken: string,
 ): Promise<{ version: ResolvedVersion; name: string } | null> {
     // This is not the version of valgrind but the version of valgrind-builder and we always want
     // the assets from the latest valgrind-builder release.
-    const release = await getReleaseAssets(VALGRIND_BUILDER_REPO, Version.latest());
+    const release = await getReleaseAssets(VALGRIND_BUILDER_REPO, Version.latest(), githubToken);
 
     // Example: valgrind-3.19.0-x86_64-ubuntu-22.04.tar.gz
     if (version.isLatest()) {
@@ -128,7 +127,10 @@ export async function resolveValgrindBuilderAssetName(
 }
 
 /** Resolves a gungraun-runner version tag, fetching "latest" from GitHub if needed. */
-export async function resolveVersion(version: Version): Promise<ResolvedVersion> {
+export async function resolveVersion(
+    version: Version,
+    githubToken: string,
+): Promise<ResolvedVersion> {
     if (!version.isLatest()) {
         return version;
     }
@@ -136,6 +138,7 @@ export async function resolveVersion(version: Version): Promise<ResolvedVersion>
     return await resolveLatestTag(
         GITHUB_REPO,
         "Could not determine latest release version for gungraun-runner",
+        githubToken,
     );
 }
 

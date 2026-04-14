@@ -20,9 +20,17 @@ inputs:
     required: false
     default: "latest"
   valgrind-strategy:
-    description: "Ordered comma-separated list of valgrind install strategies to try. Valid values: release, package-manager, source"
+    description: "Ordered comma-separated list of valgrind install strategies to try. Valid values: builder, system, source"
     required: false
-    default: "release,package-manager,source"
+    default: "builder,system,source"
+  # valgrind-url:
+  #   description: "The url to the tar archive containing the valgrind build for the valgrind-strategy: builder"
+  #   required: false
+  #   default: ""
+  # valgrind-url-sha:
+  #   description: "The url to the sha sum used to verify the tar archive for valgrind-url"
+  #   required: false
+  #   default: ""
   install-build-deps:
     description: "Install build dependencies before building valgrind from source"
     required: false

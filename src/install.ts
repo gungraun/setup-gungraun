@@ -15,35 +15,30 @@ import {
     resolveValgrindSourceTag,
     resolveVersion,
 } from "./resolve";
-import { getCargoBin, logInstalledVersion, printError, printInfo, withGroup } from "./utils";
+import {
+    findBinary,
+    getCargoBin,
+    logInstalledVersion,
+    printError,
+    printInfo,
+    withGroup,
+} from "./utils";
 import { Version } from "./version";
-// TODO: reconsider the names for the strategies
-export type ValgrindStrategy = "release" | "package-manager" | "source";
-// TODO: source to compile like in binstall ?
-export type RunnerStrategy = "binstall" | "release" | "source";
-
-export const VALID_VALGRIND_STRATEGIES: readonly ValgrindStrategy[] = [
-    "release",
-    "package-manager",
-    "source",
-];
-export const VALID_RUNNER_STRATEGIES: readonly RunnerStrategy[] = ["binstall", "release", "source"];
-export const DEFAULT_VALGRIND_STRATEGY: string = "release,package-manager,source";
-export const DEFAULT_RUNNER_STRATEGY: string = "binstall,release,source";
+import { RunnerStrategy, ValgrindStrategy } from "./inputs";
 
 const VALGRIND_BUILD_DEPS: Record<string, string[]> = {
-    "apt-get": ["autoconf", "automake", "gcc", "make", "bzip2", "libc6-dbg"],
-    dnf: ["autoconf", "automake", "gcc", "make", "bzip2", "glibc-debuginfo"],
+    "apt-get": ["autoconf", "automake", "gcc", "make", "bzip2"],
+    dnf: ["autoconf", "automake", "gcc", "make", "bzip2"],
     yum: ["autoconf", "automake", "gcc", "make", "bzip2"],
     pacman: ["autoconf", "automake", "gcc", "make", "bzip2"],
-    zypper: ["autoconf", "automake", "gcc", "make", "bzip2", "glibc-debuginfo"],
+    zypper: ["autoconf", "automake", "gcc", "make", "bzip2"],
     apk: ["autoconf", "automake", "gcc", "make", "bzip2"],
 };
 
 const VALGRIND_PACKAGES: Record<string, string[]> = {
     "apt-get": ["valgrind", "libc6-dbg"],
     dnf: ["valgrind", "glibc-debuginfo"],
-    yum: ["valgrind"],
+    yum: ["valgrind", "glibc-debuginfo"],
     pacman: ["valgrind"],
     zypper: ["valgrind", "glibc-debuginfo"],
     apk: ["valgrind"],
@@ -52,7 +47,7 @@ const VALGRIND_PACKAGES: Record<string, string[]> = {
 const DEBUGINFO_PACKAGES: Record<string, string[]> = {
     "apt-get": ["libc6-dbg"],
     dnf: ["glibc-debuginfo"],
-    yum: [],
+    yum: ["glibc-debuginfo"],
     pacman: [],
     zypper: ["glibc-debuginfo"],
     apk: [],
@@ -75,42 +70,12 @@ export function getRunnerInstallDir(): { dir: string; needsExport: boolean } | n
     return null;
 }
 
-export function parseStrategies<T extends string>(
-    input: string,
-    valid: readonly T[],
-    label: string,
-): T[] {
-    const strategies = input
-        .split(",")
-        .map((s) => s.trim().toLowerCase() as T)
-        .filter((s) => s.length > 0);
-
-    for (const s of strategies) {
-        if (!valid.includes(s)) {
-            throw new Error(`Invalid ${label} strategy '${s}'. Valid values: ${valid.join(", ")}`);
-        }
-    }
-
-    if (strategies.length === 0) {
-        throw new Error(`No ${label} strategies specified`);
-    }
-
-    return strategies;
-}
-
-async function findBinary(dir: string, name: string): Promise<string | null> {
-    const entries = fs.readdirSync(dir, { withFileTypes: true, recursive: true });
-    for (const entry of entries) {
-        if (entry.isFile() && entry.name === name) {
-            // The deprecation warning is ok. This supports node versions down to 18.17
-            return path.join(entry.parentPath ?? entry.path, entry.name);
-        }
-    }
-    return null;
-}
-
 /** Installs the gungraun-runner by trying each strategy in order until one succeeds. */
-export async function installRunner(version: Version, strategies: RunnerStrategy[]): Promise<void> {
+export async function installRunner(
+    version: Version,
+    strategies: RunnerStrategy[],
+    githubToken: string,
+): Promise<void> {
     for (const strategy of strategies) {
         switch (strategy) {
             case "binstall": {
@@ -119,7 +84,7 @@ export async function installRunner(version: Version, strategies: RunnerStrategy
                 break;
             }
             case "release": {
-                const result = await installRunnerFromRelease(version);
+                const result = await installRunnerFromRelease(version, githubToken);
                 if (result) return;
                 break;
             }
@@ -140,12 +105,15 @@ export async function installRunner(version: Version, strategies: RunnerStrategy
 }
 
 /** Installs gungraun-runner from a GitHub release archive. */
-export async function installRunnerFromRelease(version: Version): Promise<boolean> {
+export async function installRunnerFromRelease(
+    version: Version,
+    githubToken: string,
+): Promise<boolean> {
     const target = await detectTarget();
 
     return withGroup(`Downloading gungraun-runner '${version}'`, async () => {
         try {
-            const resolvedVersion = await resolveVersion(version);
+            const resolvedVersion = await resolveVersion(version, githubToken);
             const extractDir = await downloadAndExtractRunner(resolvedVersion, target);
 
             const binaryPath = path.join(extractDir, "gungraun-runner");
@@ -268,15 +236,16 @@ export async function installValgrind(
     version: Version,
     strategies: ValgrindStrategy[],
     installBuildDeps: boolean = false,
+    githubToken: string,
 ): Promise<void> {
     for (const strategy of strategies) {
         switch (strategy) {
-            case "release": {
-                const result = await installValgrindFromBuilder(version);
+            case "builder": {
+                const result = await installValgrindFromBuilder(version, githubToken);
                 if (result) return;
                 break;
             }
-            case "package-manager": {
+            case "system": {
                 const result = await installValgrindWithPackageManager();
                 if (result) return;
                 break;
@@ -298,14 +267,22 @@ export async function installValgrind(
 }
 
 /** Installs valgrind from the gungraun/valgrind-builder GitHub release. */
-export async function installValgrindFromBuilder(version: Version): Promise<boolean> {
+export async function installValgrindFromBuilder(
+    version: Version,
+    githubToken: string,
+): Promise<boolean> {
     const target = await detectTarget();
     const arch = detectArch(target);
     const { packageManager, platform } = detectPlatform();
 
     return withGroup("Installing valgrind from builder", async () => {
         try {
-            const result = await resolveValgrindBuilderAssetName(version, arch, platform);
+            const result = await resolveValgrindBuilderAssetName(
+                version,
+                arch,
+                platform,
+                githubToken,
+            );
             if (!result) {
                 printError(
                     `No valgrind builder release found for valgrind version ${version} (${arch}-${platform})`,

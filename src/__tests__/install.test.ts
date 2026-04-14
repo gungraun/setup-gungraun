@@ -70,10 +70,10 @@ jest.mock("os", () => ({
 
 import * as exec from "@actions/exec";
 import * as io from "@actions/io";
-import { cargoVersionFormat } from "../resolve";
 import { detectPlatform } from "../detect";
 import { getCargoBin } from "../utils";
 import * as download from "../download";
+import { Version } from "../version";
 import {
     installRunnerWithBinstall,
     installRunnerFromSource,
@@ -96,29 +96,29 @@ const mockDownloadAndExtractValgrindSource = download.downloadAndExtractValgrind
 describe("parseStrategies", () => {
     it("parses a comma-separated list of valid strategies", () => {
         const result = parseStrategies(
-            "release,package-manager,source",
+            "builder,system,source",
             VALID_VALGRIND_STRATEGIES,
             "valgrind",
         );
-        expect(result).toEqual(["release", "package-manager", "source"]);
+        expect(result).toEqual(["builder", "system", "source"]);
     });
 
     it("trims whitespace around strategies", () => {
         const result = parseStrategies(
-            " release , package-manager ",
+            " builder , system ",
             VALID_VALGRIND_STRATEGIES,
             "valgrind",
         );
-        expect(result).toEqual(["release", "package-manager"]);
+        expect(result).toEqual(["builder", "system"]);
     });
 
     it("is case-insensitive", () => {
         const result = parseStrategies(
-            "Release,Package-Manager",
+            "Builder,System",
             VALID_VALGRIND_STRATEGIES,
             "valgrind",
         );
-        expect(result).toEqual(["release", "package-manager"]);
+        expect(result).toEqual(["builder", "system"]);
     });
 
     it("parses a single strategy", () => {
@@ -128,7 +128,7 @@ describe("parseStrategies", () => {
 
     it("throws on invalid strategy names", () => {
         expect(() =>
-            parseStrategies("release,invalid", VALID_VALGRIND_STRATEGIES, "valgrind"),
+            parseStrategies("builder,invalid", VALID_VALGRIND_STRATEGIES, "valgrind"),
         ).toThrow("Invalid valgrind strategy 'invalid'");
     });
 
@@ -147,7 +147,7 @@ describe("installRunnerWithBinstall", () => {
     it("returns false if cargo-binstall is not found", async () => {
         mockWhich.mockResolvedValue("");
 
-        const result = await installRunnerWithBinstall("v1.0.0");
+        const result = await installRunnerWithBinstall(Version.from_tag("v1.0.0"));
 
         expect(result).toBe(false);
     });
@@ -160,7 +160,7 @@ describe("installRunnerWithBinstall", () => {
         });
         mockExec.mockResolvedValue(0);
 
-        const result = await installRunnerWithBinstall("v1.0.0");
+        const result = await installRunnerWithBinstall(Version.from_tag("v1.0.0"));
 
         expect(result).toBe(true);
         expect(mockExec).toHaveBeenCalledWith(getCargoBin(), [
@@ -179,9 +179,8 @@ describe("installRunnerWithBinstall", () => {
             return Promise.resolve("");
         });
         mockExec.mockResolvedValue(0);
-        (cargoVersionFormat as jest.Mock).mockReturnValue(null);
 
-        const result = await installRunnerWithBinstall("latest");
+        const result = await installRunnerWithBinstall(Version.latest());
 
         expect(result).toBe(true);
         expect(mockExec).toHaveBeenCalledWith(getCargoBin(), [
@@ -191,8 +190,6 @@ describe("installRunnerWithBinstall", () => {
             "compile",
             "gungraun-runner",
         ]);
-
-        (cargoVersionFormat as jest.Mock).mockRestore?.();
     });
 
     it("returns false if cargo binstall exec fails", async () => {
@@ -202,14 +199,13 @@ describe("installRunnerWithBinstall", () => {
         });
         mockExec.mockRejectedValue(new Error("install failed"));
 
-        const result = await installRunnerWithBinstall("v1.0.0");
+        const result = await installRunnerWithBinstall(Version.from_tag("v1.0.0"));
 
         expect(result).toBe(false);
     });
 
     it("uses CARGO env var for cargo binstall", async () => {
         process.env.CARGO = "/custom/cargo";
-        (cargoVersionFormat as jest.Mock).mockReturnValue("1.0.0");
         mockWhich.mockImplementation((cmd: string) => {
             if (cmd === "cargo-binstall") return Promise.resolve("/usr/bin/cargo-binstall");
             if (cmd === "gungraun-runner") return Promise.resolve("/usr/bin/gungraun-runner");
@@ -217,7 +213,7 @@ describe("installRunnerWithBinstall", () => {
         });
         mockExec.mockResolvedValue(0);
 
-        const result = await installRunnerWithBinstall("v1.0.0");
+        const result = await installRunnerWithBinstall(Version.from_tag("v1.0.0"));
 
         expect(result).toBe(true);
         expect(mockExec).toHaveBeenCalledWith("/custom/cargo", [
@@ -229,7 +225,6 @@ describe("installRunnerWithBinstall", () => {
         ]);
 
         delete process.env.CARGO;
-        (cargoVersionFormat as jest.Mock).mockRestore?.();
     });
 });
 
@@ -240,9 +235,8 @@ describe("installRunnerFromSource", () => {
 
     it("calls cargo install with formatted version", async () => {
         mockExec.mockResolvedValue(0);
-        (cargoVersionFormat as jest.Mock).mockReturnValue("1.0.0");
 
-        await installRunnerFromSource("v1.0.0");
+        await installRunnerFromSource(Version.from_tag("v1.0.0"));
 
         expect(mockExec).toHaveBeenCalledWith(getCargoBin(), [
             "install",
@@ -254,9 +248,8 @@ describe("installRunnerFromSource", () => {
 
     it("calls cargo install without version when latest", async () => {
         mockExec.mockResolvedValue(0);
-        (cargoVersionFormat as jest.Mock).mockReturnValue(null);
 
-        await installRunnerFromSource("latest");
+        await installRunnerFromSource(Version.latest());
 
         expect(mockExec).toHaveBeenCalledWith(getCargoBin(), ["install", "gungraun-runner"]);
     });
@@ -268,7 +261,7 @@ describe("installValgrind", () => {
         mockExec.mockResolvedValue(0);
     });
 
-    it("tries only package-manager when specified", async () => {
+    it("tries only system when specified", async () => {
         mockDetectPlatform.mockReturnValue({
             id: "ubuntu",
             versionId: "22.04",
@@ -276,7 +269,7 @@ describe("installValgrind", () => {
             packageManager: "apt-get",
         });
 
-        await installValgrind(["package-manager"]);
+        await installValgrind(Version.from_tag("v3.20.0"), ["system"]);
 
         expect(mockExec).toHaveBeenCalledWith("sudo", ["apt-get", "update", "-qq"]);
         expect(mockExec).toHaveBeenCalledWith("sudo", [
@@ -289,7 +282,7 @@ describe("installValgrind", () => {
         ]);
     });
 
-    it("tries release then package-manager when both specified", async () => {
+    it("tries builder then system when both specified", async () => {
         mockDetectPlatform.mockReturnValue({
             id: "ubuntu",
             versionId: "22.04",
@@ -297,11 +290,11 @@ describe("installValgrind", () => {
             packageManager: "apt-get",
         });
 
-        await installValgrind(["release", "package-manager"]);
+        await installValgrind(Version.from_tag("v3.20.0"), ["builder", "system"]);
 
-        // Both release attempt and package manager should be called
-        // (release fails since downloadAndExtractValgrind is mocked, but installValgrindFromBuilder
-        //  returns false because it can't find the binary; then package-manager is tried)
+        // Both builder attempt and package manager should be called
+        // (builder fails since downloadAndExtractValgrind is mocked, but installValgrindFromBuilder
+        //  returns false because it can't find the binary; then system is tried)
     });
 
     it("fails when all strategies fail", async () => {
@@ -312,7 +305,7 @@ describe("installValgrind", () => {
             packageManager: null,
         });
 
-        await expect(installValgrind(["package-manager"])).rejects.toThrow();
+        await expect(installValgrind(Version.from_tag("v3.20.0"), ["system"])).rejects.toThrow();
     });
 });
 
@@ -551,7 +544,7 @@ describe("installValgrindFromSource", () => {
     });
 
     it("builds valgrind from source with resolved tag", async () => {
-        const result = await installValgrindFromSource(false);
+        const result = await installValgrindFromSource(Version.from_tag("v3.20.0"), false);
 
         expect(result).toBe(true);
         expect(mockDownloadAndExtractValgrindSource).toHaveBeenCalledWith("3.20.0");
@@ -569,7 +562,7 @@ describe("installValgrindFromSource", () => {
             packageManager: "apt-get",
         });
 
-        const result = await installValgrindFromSource(true);
+        const result = await installValgrindFromSource(Version.from_tag("v3.20.0"), true);
 
         expect(result).toBe(true);
         expect(mockExec).toHaveBeenCalledWith("sudo", ["apt-get", "update", "-qq"]);
@@ -577,7 +570,7 @@ describe("installValgrindFromSource", () => {
     });
 
     it("continues without build deps when installBuildDeps is false", async () => {
-        const result = await installValgrindFromSource(false);
+        const result = await installValgrindFromSource(Version.from_tag("v3.20.0"), false);
 
         expect(result).toBe(true);
         expect(mockExec).not.toHaveBeenCalledWith("sudo", expect.arrayContaining(["apt-get", "update"]));
@@ -587,7 +580,7 @@ describe("installValgrindFromSource", () => {
         const { resolveValgrindSourceTag } = require("../resolve");
         (resolveValgrindSourceTag as jest.Mock).mockResolvedValueOnce("3.26.0");
 
-        const result = await installValgrindFromSource(false);
+        const result = await installValgrindFromSource(Version.from_tag("v3.20.0"), false);
 
         expect(result).toBe(true);
         expect(mockDownloadAndExtractValgrindSource).toHaveBeenCalledWith("3.26.0");
@@ -596,7 +589,7 @@ describe("installValgrindFromSource", () => {
     it("returns false on build failure", async () => {
         mockExec.mockRejectedValueOnce(new Error("build failed"));
 
-        const result = await installValgrindFromSource(false);
+        const result = await installValgrindFromSource(Version.from_tag("v3.20.0"), false);
 
         expect(result).toBe(false);
     });
@@ -615,7 +608,7 @@ describe("installRunner", () => {
             return Promise.resolve("");
         });
 
-        await installRunner("v1.0.0", ["binstall", "release", "source"]);
+        await installRunner(Version.from_tag("v1.0.0"), ["binstall", "release", "source"]);
 
         expect(mockExec).toHaveBeenCalledWith(getCargoBin(), expect.arrayContaining(["binstall"]));
     });
