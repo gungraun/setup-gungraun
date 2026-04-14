@@ -24,7 +24,7 @@ import {
     printInfo,
     withGroup,
 } from "./utils";
-import { ResolvedVersion, Version } from "./version";
+import { Version } from "./version";
 import { RunnerStrategy, ValgrindStrategy } from "./inputs";
 
 const VALGRIND_BUILD_DEPS: Record<string, string[]> = {
@@ -94,6 +94,9 @@ export async function installRunner(
                 const result = await installRunnerFromSource(version);
                 if (result) return;
                 break;
+            }
+            case "none": {
+                return;
             }
             default: {
                 throw new Error(`Invalid strategy '${strategy}'`);
@@ -267,6 +270,9 @@ export async function installValgrind(
                 const result = await installValgrindFromSource(version, installBuildDeps);
                 if (result) return;
                 break;
+            }
+            case "none": {
+                return;
             }
             default: {
                 throw new Error(`Invalid strategy '${strategy}'`);

@@ -4,10 +4,6 @@ branding:
   icon: terminal
   color: purple
 
-  # TODO: STOOPPED HERE
-# TODO: document that empty strategies are valid and skips the installation of
-# this tool entirely
-# TODO: Add none as an alias for the empty string in strategies?
 inputs:
   github-token:
     description: "GitHub token for API requests (avoids rate limits on release downloads)"
@@ -18,7 +14,7 @@ inputs:
     required: false
     default: "false"
   runner-strategy:
-    description: "Ordered comma-separated list of runner install strategies to try. Valid values: binstall, release, source"
+    description: "Ordered comma-separated list of runner install strategies to try. Valid values: binstall, release, source, none"
     required: false
     default: "binstall,release,source"
   runner-target:
@@ -34,7 +30,7 @@ inputs:
     required: false
     default: ""
   valgrind-strategy:
-    description: "Ordered comma-separated list of valgrind install strategies to try. Valid values: builder, system, source"
+    description: "Ordered comma-separated list of valgrind install strategies to try. Valid values: builder, system, source, none"
     required: false
     default: "builder,system,source"
   valgrind-url:

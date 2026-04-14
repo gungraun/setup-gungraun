@@ -3,15 +3,21 @@ import { Version } from "./version";
 import { detectProjectVersion, detectTarget } from "./detect";
 import { bail } from "./utils";
 
-export type ValgrindStrategy = "builder" | "system" | "source";
-export type RunnerStrategy = "binstall" | "release" | "source";
+export type ValgrindStrategy = "builder" | "system" | "source" | "none";
+export type RunnerStrategy = "binstall" | "release" | "source" | "none";
 
 export const VALID_VALGRIND_STRATEGIES: readonly ValgrindStrategy[] = [
     "builder",
+    "none",
     "system",
     "source",
 ];
-export const VALID_RUNNER_STRATEGIES: readonly RunnerStrategy[] = ["binstall", "release", "source"];
+export const VALID_RUNNER_STRATEGIES: readonly RunnerStrategy[] = [
+    "binstall",
+    "none",
+    "release",
+    "source",
+];
 export const DEFAULT_VALGRIND_STRATEGY: string = "builder,system,source";
 export const DEFAULT_RUNNER_STRATEGY: string = "binstall,release,source";
 
@@ -104,9 +110,15 @@ export function parseStrategies<T extends string>(
             .filter((s) => s.length > 0),
     );
 
+    if (strategies.size === 0) {
+        return ["none" as T];
+    }
+
     for (const v of valid) {
         if (!strategies.has(v)) {
             throw new Error(`Invalid ${label} strategy '${v}'. Valid values: ${valid.join(", ")}`);
+        } else if (v === "none") {
+            return ["none" as T];
         }
     }
 
