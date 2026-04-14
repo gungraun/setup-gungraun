@@ -37,6 +37,34 @@ export function detectArch(target: string): string {
     return target.split("-")[0];
 }
 
+export function detectShaVariant(hash: string): string | null {
+    let variant;
+
+    switch (hash.length) {
+        case 40:
+            variant = 1;
+            break;
+        case 56:
+            variant = 224;
+            break;
+        case 64:
+            variant = 256;
+            break;
+        case 96:
+            variant = 384;
+            break;
+        case 128:
+            variant = 512;
+            break;
+
+        default:
+            return null;
+    }
+
+    return "sha" + variant;
+}
+
+// FIX: should be async
 /** Detects the platform, version, and package manager from /etc/os-release. */
 export function detectPlatform(): PlatformInfo {
     if (!fs.existsSync("/etc/os-release")) {

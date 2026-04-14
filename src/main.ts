@@ -29,6 +29,8 @@ async function run(): Promise<void> {
         runnerVersion,
         runnerTarget,
         valgrindStrategies,
+        valgrindUrl,
+        valgrindShaUrl,
         valgrindVersion,
     } = inputs;
 
@@ -50,6 +52,8 @@ async function run(): Promise<void> {
                 valgrindStrategies,
                 installBuildDeps,
                 githubToken,
+                valgrindUrl,
+                valgrindShaUrl,
             );
         } catch (error) {
             bail(`Error installing valgrind: ${(error as Error).message}`);

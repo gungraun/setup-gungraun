@@ -4,6 +4,8 @@ import * as tc from "@actions/tool-cache";
 import { getReleaseAssets } from "./resolve";
 import { GITHUB_REPO, VALGRIND_BUILDER_REPO, printInfo } from "./utils";
 import { ResolvedVersion } from "./version";
+import path from "path";
+import { detectShaVariant } from "./detect";
 
 /** Downloads and extracts the gungraun-runner release archive for a given tag and target. */
 export async function downloadAndExtractRunner(
@@ -34,11 +36,27 @@ async function downloadAndExtractRelease(
 
     if (shaAsset) {
         const shaPath = await tc.downloadTool(shaAsset.browserDownloadUrl);
-        await verifySha("256", archivePath, shaPath, assetName);
+        await verifySha(256, archivePath, shaPath);
     }
 
     const extractDir = await tc.extractTar(archivePath);
     return extractDir;
+}
+
+export async function downloadAndExtractValgrindUrl(
+    valgrindUrl: string,
+    valgrindShaUrl: string,
+): Promise<{ extractDir: string; name: string }> {
+    const archivePath = await tc.downloadTool(valgrindUrl);
+    const name = path.basename(archivePath);
+
+    if (valgrindShaUrl) {
+        const shaPath = await tc.downloadTool(valgrindShaUrl);
+        await verifySha("auto", archivePath, shaPath);
+    }
+
+    const extractDir = await tc.extractTar(archivePath);
+    return { extractDir, name };
 }
 
 export async function downloadAndExtractValgrindSource(version: ResolvedVersion): Promise<string> {
@@ -50,7 +68,7 @@ export async function downloadAndExtractValgrindSource(version: ResolvedVersion)
     const archivePath = await tc.downloadTool(tarballUrl);
     const shaAsset = await tc.downloadTool(shaSumsUrl);
 
-    await verifySha("512", archivePath, shaAsset, assetName);
+    await verifySha(512, archivePath, shaAsset);
 
     const extractDir = await tc.extractTar(archivePath, undefined, "xj");
     return extractDir;
@@ -65,15 +83,9 @@ export async function downloadAndExtractValgrind(
     return downloadAndExtractRelease(VALGRIND_BUILDER_REPO, version, assetName, githubToken);
 }
 
-async function verifySha(
-    hash: "256" | "512",
-    archivePath: string,
-    shaFilePath: string,
-    expectedName: string,
-): Promise<void> {
-    const shaContent = fs.readFileSync(shaFilePath, "utf-8").trim();
-
-    const expectedHash = shaContent
+function extractHash(filePath: string, expectedName: string): string | null {
+    const shaContent = fs.readFileSync(filePath, "utf-8").trim();
+    const hash = shaContent
         .split(/\r?\n/)
         .map((line) => line.split(/\s+/))
         .filter((parts) => parts.length >= 2)
@@ -81,21 +93,42 @@ async function verifySha(
             const name = nameParts.join(" ").replace(/^\*/, "");
             return name === expectedName || name.endsWith(`/${expectedName}`);
         })?.[0];
+    return hash?.trim() ?? null;
+}
 
+async function verifySha(
+    variant: 256 | 512 | "auto",
+    archivePath: string,
+    shaFilePath: string,
+): Promise<void> {
+    const expectedName = path.basename(archivePath);
+    const expectedHash = extractHash(shaFilePath, expectedName);
     if (!expectedHash) {
-        throw new Error(`Could not find SHA-${hash} entry for ${expectedName} in checksum file`);
+        throw new Error(`Could not find SHA-${variant} entry for ${expectedName} in checksum file`);
+    }
+
+    let shaVariant;
+    if (variant === "auto") {
+        shaVariant = detectShaVariant(expectedHash);
+        if (!shaVariant) {
+            throw new Error("Unable to detect sha variant");
+        }
+    } else {
+        shaVariant = "sha" + variant;
     }
 
     const actualHash = crypto
-        .createHash("sha" + hash)
+        .createHash(shaVariant)
         .update(fs.readFileSync(archivePath))
         .digest("hex");
 
     if (actualHash !== expectedHash) {
         throw new Error(
-            `SHA-${hash} verification failed for ${expectedName}\nExpected: ${expectedHash}\nActual:   ${actualHash}`,
+            `${shaVariant} verification failed for ${expectedName}
+Expected: ${expectedHash}
+Actual:   ${actualHash}`,
         );
     }
 
-    printInfo(`SHA-${hash} verified for ${expectedName}`);
+    printInfo(`SHA-${variant} verified for ${expectedName}`);
 }

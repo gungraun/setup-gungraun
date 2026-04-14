@@ -22,6 +22,8 @@ export interface Inputs {
     runnerTarget: string;
     runnerVersion: Version;
     valgrindStrategies: ValgrindStrategy[];
+    valgrindUrl: string;
+    valgrindShaUrl: string;
     valgrindVersion: Version;
 }
 
@@ -37,6 +39,8 @@ export async function parseInputs(): Promise<Inputs> {
     const runnerVersion = await parseRunnerVersion();
     const valgrindVersion = await parseValgrindVersion();
     const valgrindStrategies = await parseValgrindStrategies();
+    const valgrindUrl = await parseValgrindUrl();
+    const valgrindShaUrl = await parseValgrindShaUrl();
 
     return {
         githubToken,
@@ -45,6 +49,8 @@ export async function parseInputs(): Promise<Inputs> {
         runnerTarget,
         runnerVersion,
         valgrindStrategies,
+        valgrindUrl,
+        valgrindShaUrl,
         valgrindVersion,
     };
 }
@@ -119,6 +125,14 @@ export async function parseValgrindStrategies(): Promise<ValgrindStrategy[]> {
     } catch (error) {
         bail(`Invalid valgrind-strategy: ${(error as Error).message}`);
     }
+}
+
+export async function parseValgrindUrl(): Promise<string> {
+    return core.getInput("valgrind-url") || "";
+}
+
+export async function parseValgrindShaUrl(): Promise<string> {
+    return core.getInput("valgrind-sha-url") || "";
 }
 
 export async function parseValgrindVersion(): Promise<Version> {

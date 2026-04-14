@@ -1,6 +1,7 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as fs from "fs";
+import * as io from "@actions/io";
 import * as path from "path";
 
 /** GitHub repository for gungraun-runner releases. */
@@ -52,6 +53,26 @@ export async function findBinary(dir: string, name: string): Promise<string | nu
         }
     }
     return null;
+}
+
+export async function moveDir(src: string, dst: string): Promise<void> {
+    async function moveDirContents(srcRoot: string, destRoot: string) {
+        const entries = await fs.promises.readdir(srcRoot, { withFileTypes: true });
+        for (const e of entries) {
+            const srcPath = path.join(srcRoot, e.name);
+            const destPath = path.join(destRoot, e.name);
+            if (e.isDirectory()) {
+                // ensure dest dir exists then move contents recursively, or move the dir itself
+                await io.mkdirP(destPath);
+                await moveDirContents(srcPath, destPath);
+                await io.rmRF(srcPath);
+            } else {
+                await io.mv(srcPath, destPath);
+            }
+        }
+    }
+
+    await moveDirContents(src, dst);
 }
 
 /** Logs a error message. */

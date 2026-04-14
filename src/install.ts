@@ -2,13 +2,14 @@ import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as fs from "fs";
 import * as io from "@actions/io";
-import * as os from "os";
 import * as path from "path";
+import * as os from "os";
 import { detectArch, detectPlatform, detectTarget } from "./detect";
 import {
     downloadAndExtractRunner as downloadAndExtractRunner,
     downloadAndExtractValgrind,
     downloadAndExtractValgrindSource,
+    downloadAndExtractValgrindUrl,
 } from "./download";
 import {
     resolveValgrindBuilderAssetName,
@@ -242,11 +243,18 @@ export async function installValgrind(
     strategies: ValgrindStrategy[],
     installBuildDeps: boolean = false,
     githubToken: string,
+    valgrindUrl: string,
+    valgrindShaUrl: string,
 ): Promise<void> {
     for (const strategy of strategies) {
         switch (strategy) {
             case "builder": {
-                const result = await installValgrindFromBuilder(version, githubToken);
+                const result = await installValgrindFromBuilder(
+                    version,
+                    githubToken,
+                    valgrindUrl,
+                    valgrindShaUrl,
+                );
                 if (result) return;
                 break;
             }
@@ -275,48 +283,72 @@ export async function installValgrind(
 export async function installValgrindFromBuilder(
     version: Version,
     githubToken: string,
+    valgrindUrl: string,
+    valgrindShaUrl: string,
 ): Promise<boolean> {
-    const target = await detectTarget();
-    const arch = detectArch(target);
-    const { packageManager, platform } = detectPlatform();
-
     return withGroup("Installing valgrind from builder", async () => {
+        const { packageManager, platform } = detectPlatform();
+
         try {
-            const result = await resolveValgrindBuilderAssetName(
-                version,
-                arch,
-                platform,
-                githubToken,
-            );
-            if (!result) {
-                printError(
-                    `No valgrind builder release found for valgrind version ${version} (${arch}-${platform})`,
+            let extractDir;
+            if (valgrindUrl) {
+                printInfo(`Downloading valgrind archive from url '${valgrindUrl}'`);
+
+                const { extractDir: dir } = await downloadAndExtractValgrindUrl(
+                    valgrindUrl,
+                    valgrindShaUrl,
                 );
-                return false;
+
+                extractDir = dir;
+            } else {
+                const target = await detectTarget();
+                const arch = detectArch(target);
+
+                const result = await resolveValgrindBuilderAssetName(
+                    version,
+                    arch,
+                    platform,
+                    githubToken,
+                );
+                if (!result) {
+                    printError(
+                        `No valgrind builder release found for valgrind version ${version} \
+(${arch}-${platform})`,
+                    );
+                    return false;
+                }
+
+                const { version: resolvedVersion, name } = result;
+
+                printInfo(`Downloading valgrind builder archive '${name}'`);
+                extractDir = await downloadAndExtractValgrind(resolvedVersion, name, githubToken);
             }
 
-            const { version: resolvedVersion, name: assetName } = result;
-            printInfo(`Downloading valgrind builder asset '${assetName}'`);
-            const extractDir = await downloadAndExtractValgrind(
-                resolvedVersion,
-                assetName,
-                githubToken,
-            );
-
-            await exec.exec("sudo", ["tar", "-xzf", path.join(extractDir, assetName), "-C", "/"]);
+            const entries = await fs.promises.readdir(extractDir);
+            let args = ["mv"];
+            args.concat(entries);
+            args.push("/");
+            await exec.exec("sudo", args);
 
             await logInstalledVersion("valgrind", "valgrind");
-
-            if (packageManager) {
-                await installWithPackageManager(packageManager, DEBUGINFO_PACKAGES[packageManager]);
-            }
-
-            return true;
         } catch (error) {
             printError(`Failed to install valgrind from release: ${(error as Error).message}`);
 
             return false;
         }
+
+        try {
+            // TODO: Print a warning that the debug symbols could not be installed and have to be
+            // installed manually if tools like memcheck are intended to be used.
+            if (packageManager) {
+                await installWithPackageManager(packageManager, DEBUGINFO_PACKAGES[packageManager]);
+            }
+        } catch (error) {
+            // FIX: in case of errors print the warning from above but don't fail the whole
+            // installation
+        }
+
+        return true;
     });
 }
 

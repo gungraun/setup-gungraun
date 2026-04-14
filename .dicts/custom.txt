@@ -6,6 +6,7 @@ gungraun
 INSTALL_DIR
 libc6
 linuxmint
+memcheck
 ncpus
 noconfirm
 pacman
