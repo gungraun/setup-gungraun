@@ -22,6 +22,7 @@ import {
     logInstalledVersion,
     printError,
     printInfo,
+    printWarning,
     withGroup,
 } from "./utils";
 import { Version } from "./version";
@@ -69,6 +70,25 @@ export function getRunnerInstallDir(): { dir: string; needsExport: boolean } | n
     }
 
     return null;
+}
+
+export async function installDebugSymbols(): Promise<void> {
+    let warning = false;
+    try {
+        const { packageManager } = await detectPlatform();
+        if (packageManager) {
+            await installWithPackageManager(packageManager, DEBUGINFO_PACKAGES[packageManager]);
+        } else {
+            warning = true;
+        }
+    } catch {
+        warning = true;
+    }
+
+    if (warning) {
+        printWarning(`Failed to install debug symbols for libc. That means you might not \
+be able to use the memcheck tool. Other tools will likely still work`);
+    }
 }
 
 /** Installs the gungraun-runner by trying each strategy in order until one succeeds. */
@@ -293,8 +313,6 @@ export async function installValgrindFromBuilder(
     valgrindShaUrl: string,
 ): Promise<boolean> {
     return withGroup("Installing valgrind from builder", async () => {
-        const { packageManager, platform } = await detectPlatform();
-
         try {
             let extractDir;
             if (valgrindUrl) {
@@ -307,6 +325,7 @@ export async function installValgrindFromBuilder(
 
                 extractDir = dir;
             } else {
+                const { platform } = await detectPlatform();
                 const target = await detectTarget();
                 const arch = detectArch(target);
 
@@ -340,18 +359,7 @@ export async function installValgrindFromBuilder(
             return false;
         }
 
-        try {
-            // TODO: Print a warning that the debug symbols could not be installed and have to be
-            // installed manually if tools like memcheck are intended to be used.
-            // TODO: Check if this is necessary in the other installValgrind* methods, too
-            if (packageManager) {
-                await installWithPackageManager(packageManager, DEBUGINFO_PACKAGES[packageManager]);
-            }
-        } catch (error) {
-            // FIX: in case of errors print the warning from above but don't fail the whole
-            // installation
-        }
-
+        await installDebugSymbols();
         return true;
     });
 }
@@ -445,17 +453,13 @@ export async function installValgrindFromSource(
             await exec.exec("sudo", ["make", "install"], { cwd: sourceDir });
 
             await logInstalledVersion("valgrind", "valgrind", `valgrind-${resolvedVersion}`);
-
-            const { packageManager } = await detectPlatform();
-            if (packageManager) {
-                await installWithPackageManager(packageManager, DEBUGINFO_PACKAGES[packageManager]);
-            }
-
-            return true;
         } catch (error) {
             printError(`Failed to install valgrind from source: ${(error as Error).message}`);
             return false;
         }
+
+        await installDebugSymbols();
+        return true;
     });
 }
 

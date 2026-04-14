@@ -4,6 +4,7 @@ debuginfo
 endgroup
 gungraun
 INSTALL_DIR
+libc
 libc6
 linuxmint
 memcheck
