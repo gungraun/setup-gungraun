@@ -75,16 +75,17 @@ export async function installRunner(
     version: Version,
     strategies: RunnerStrategy[],
     githubToken: string,
+    target: string,
 ): Promise<void> {
     for (const strategy of strategies) {
         switch (strategy) {
             case "binstall": {
-                const result = await installRunnerWithBinstall(version);
+                const result = await installRunnerWithBinstall(version, target);
                 if (result) return;
                 break;
             }
             case "release": {
-                const result = await installRunnerFromRelease(version, githubToken);
+                const result = await installRunnerFromRelease(version, githubToken, target);
                 if (result) return;
                 break;
             }
@@ -108,13 +109,12 @@ export async function installRunner(
 export async function installRunnerFromRelease(
     version: Version,
     githubToken: string,
+    target: string,
 ): Promise<boolean> {
-    const target = await detectTarget();
-
     return withGroup(`Downloading gungraun-runner '${version}'`, async () => {
         try {
             const resolvedVersion = await resolveVersion(version, githubToken);
-            const extractDir = await downloadAndExtractRunner(resolvedVersion, target);
+            const extractDir = await downloadAndExtractRunner(resolvedVersion, target, githubToken);
 
             const binaryPath = path.join(extractDir, "gungraun-runner");
             if (!fs.existsSync(binaryPath)) {
@@ -163,19 +163,18 @@ export async function installRunnerFromRelease(
 }
 
 /** Installs gungraun-runner from source via cargo install. */
-export async function installRunnerFromSource(version: Version): Promise<boolean> {
+export async function installRunnerFromSource(version: Version, target?: string): Promise<boolean> {
     return withGroup("Installing gungraun-runner via cargo install", async () => {
         try {
-            if (version.isLatest()) {
-                await exec.exec(getCargoBin(), ["install", "gungraun-runner"]);
-            } else {
-                await exec.exec(getCargoBin(), [
-                    "install",
-                    "gungraun-runner",
-                    "--version",
-                    version.toString(),
-                ]);
+            let args = ["install", "gungraun-runner"];
+            if (!version.isLatest()) {
+                args.push("--version", version.toString());
             }
+            if (target) {
+                args.push("--target", `${target}`);
+            }
+
+            await exec.exec(getCargoBin(), args);
 
             await logInstalledVersion(
                 "gungraun-runner",
@@ -195,7 +194,10 @@ export async function installRunnerFromSource(version: Version): Promise<boolean
 }
 
 /** Installs gungraun-runner via cargo-binstall if available. */
-export async function installRunnerWithBinstall(version: Version): Promise<boolean> {
+export async function installRunnerWithBinstall(
+    version: Version,
+    target?: string,
+): Promise<boolean> {
     if (!(await io.which("cargo-binstall", false))) {
         return false;
     }
@@ -203,6 +205,9 @@ export async function installRunnerWithBinstall(version: Version): Promise<boole
     return withGroup("Installing gungraun-runner via cargo-binstall", async () => {
         try {
             const args = ["binstall", "-y", "--disable-strategies", "compile"];
+            if (target) {
+                args.push(`--targets`, `${target}`);
+            }
             if (version.isLatest()) {
                 args.push("gungraun-runner");
             } else {
@@ -292,7 +297,11 @@ export async function installValgrindFromBuilder(
 
             const { version: resolvedVersion, name: assetName } = result;
             printInfo(`Downloading valgrind builder asset '${assetName}'`);
-            const extractDir = await downloadAndExtractValgrind(resolvedVersion, assetName);
+            const extractDir = await downloadAndExtractValgrind(
+                resolvedVersion,
+                assetName,
+                githubToken,
+            );
 
             await exec.exec("sudo", ["tar", "-xzf", path.join(extractDir, assetName), "-C", "/"]);
 

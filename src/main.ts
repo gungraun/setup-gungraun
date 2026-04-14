@@ -27,6 +27,7 @@ async function run(): Promise<void> {
         installBuildDeps,
         runnerStrategies,
         runnerVersion,
+        runnerTarget,
         valgrindStrategies,
         valgrindVersion,
     } = inputs;
@@ -56,7 +57,7 @@ async function run(): Promise<void> {
     }
 
     try {
-        await installRunner(runnerVersion, runnerStrategies, githubToken);
+        await installRunner(runnerVersion, runnerStrategies, githubToken, runnerTarget);
     } catch (error) {
         bail(`Error installing gungraun-runner: ${(error as Error).message}`);
     }

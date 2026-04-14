@@ -7,14 +7,22 @@ branding:
   # TODO: Support custom valgrind download url and sha
   # TODO: Support building valgrind from source
 inputs:
+  github-token:
+    description: "GitHub token for API requests (avoids rate limits on release downloads)"
+    required: false
+    default: ""
+  runner-strategy:
+    description: "Ordered comma-separated list of runner install strategies to try. Valid values: binstall, release, source"
+    required: false
+    default: "binstall,release,source"
+  runner-target:
+    description: "Rust target triple (e.g. x86_64-unknown-linux-gnu). Auto-detected from rustc if omitted."
+    required: false
+    default: ""
   runner-version:
     description: "Version of gungraun-runner to install (e.g. v0.1.0, latest, auto)"
     required: false
     default: "auto"
-  target:
-    description: "Rust target triple (e.g. x86_64-unknown-linux-gnu). Auto-detected from rustc if omitted."
-    required: false
-    default: ""
   valgrind-version:
     description: "Valgrind release tag (e.g. v0.1.1, latest)"
     required: false
@@ -35,14 +43,6 @@ inputs:
     description: "Install build dependencies before building valgrind from source"
     required: false
     default: "false"
-  runner-strategy:
-    description: "Ordered comma-separated list of runner install strategies to try. Valid values: binstall, release, source"
-    required: false
-    default: "binstall,release,source"
-  github-token:
-    description: "GitHub token for API requests (avoids rate limits on release downloads)"
-    required: false
-    default: ""
 
 runs:
   using: "node20"

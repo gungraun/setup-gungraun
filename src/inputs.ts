@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
 import { Version } from "./version";
-import { detectProjectVersion } from "./detect";
+import { detectProjectVersion, detectTarget } from "./detect";
 import { bail } from "./utils";
 
 export type ValgrindStrategy = "builder" | "system" | "source";
@@ -19,15 +19,21 @@ export interface Inputs {
     installBuildDeps: boolean;
     githubToken: string;
     runnerStrategies: RunnerStrategy[];
+    runnerTarget: string;
     runnerVersion: Version;
     valgrindStrategies: ValgrindStrategy[];
     valgrindVersion: Version;
+}
+
+export async function parseGithubToken(): Promise<string> {
+    return core.getInput("github-token") || process.env.GITHUB_TOKEN?.trim() || "";
 }
 
 export async function parseInputs(): Promise<Inputs> {
     const githubToken = await parseGithubToken();
     const installBuildDeps = await parseInstallBuildDeps();
     const runnerStrategies = await parseRunnerStrategies();
+    const runnerTarget = await parseRunnerTarget();
     const runnerVersion = await parseRunnerVersion();
     const valgrindVersion = await parseValgrindVersion();
     const valgrindStrategies = await parseValgrindStrategies();
@@ -36,14 +42,27 @@ export async function parseInputs(): Promise<Inputs> {
         githubToken,
         installBuildDeps,
         runnerStrategies,
+        runnerTarget,
         runnerVersion,
         valgrindStrategies,
         valgrindVersion,
     };
 }
 
-export async function parseGithubToken(): Promise<string> {
-    return core.getInput("github-token") || process.env.GITHUB_TOKEN?.trim() || "";
+export async function parseRunnerTarget(): Promise<string> {
+    return core.getInput("runner-target") || (await detectTarget());
+}
+
+export async function parseRunnerStrategies(): Promise<RunnerStrategy[]> {
+    try {
+        return parseStrategies<RunnerStrategy>(
+            core.getInput("runner-strategy") || DEFAULT_RUNNER_STRATEGY,
+            VALID_RUNNER_STRATEGIES,
+            "runner",
+        );
+    } catch (error) {
+        bail(`Invalid runner-strategy: ${(error as Error).message}`);
+    }
 }
 
 export async function parseRunnerVersion(): Promise<Version> {
@@ -65,18 +84,6 @@ export async function parseRunnerVersion(): Promise<Version> {
     }
 
     return runnerVersion;
-}
-
-export async function parseRunnerStrategies(): Promise<RunnerStrategy[]> {
-    try {
-        return parseStrategies<RunnerStrategy>(
-            core.getInput("runner-strategy") || DEFAULT_RUNNER_STRATEGY,
-            VALID_RUNNER_STRATEGIES,
-            "runner",
-        );
-    } catch (error) {
-        bail(`Invalid runner-strategy: ${(error as Error).message}`);
-    }
 }
 
 export function parseStrategies<T extends string>(

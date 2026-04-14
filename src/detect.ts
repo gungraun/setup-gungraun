@@ -110,13 +110,8 @@ export async function detectProjectVersion(): Promise<ResolvedVersion> {
     );
 }
 
-/** Detects the Rust compiler target triple, using RUNNER_TARGET env var if set. */
+/** Detects the Rust compiler target triple */
 export async function detectTarget(): Promise<string> {
-    const runnerTarget = process.env.RUNNER_TARGET;
-    if (runnerTarget) {
-        return runnerTarget;
-    }
-
     const { stdout } = await exec.getExecOutput("rustc", ["-vV"], {
         silent: true,
     });

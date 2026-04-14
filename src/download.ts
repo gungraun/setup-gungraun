@@ -9,17 +9,19 @@ import { ResolvedVersion } from "./version";
 export async function downloadAndExtractRunner(
     version: ResolvedVersion,
     target: string,
+    githubToken: string,
 ): Promise<string> {
     const assetName = `gungraun-runner-${version.withPrefix()}-${target}.tar.gz`;
-    return downloadAndExtractRelease(GITHUB_REPO, version, assetName);
+    return downloadAndExtractRelease(GITHUB_REPO, version, assetName, githubToken);
 }
 
 async function downloadAndExtractRelease(
     repo: string,
     version: ResolvedVersion,
     assetName: string,
+    githubToken: string,
 ): Promise<string> {
-    const release = await getReleaseAssets(repo, version);
+    const release = await getReleaseAssets(repo, version, githubToken);
 
     const archiveAsset = release.assets.find((a) => a.name === assetName);
     const shaAsset = release.assets.find((a) => a.name === `${assetName}.sha256`);
@@ -58,8 +60,9 @@ export async function downloadAndExtractValgrindSource(version: ResolvedVersion)
 export async function downloadAndExtractValgrind(
     version: ResolvedVersion,
     assetName: string,
+    githubToken: string,
 ): Promise<string> {
-    return downloadAndExtractRelease(VALGRIND_BUILDER_REPO, version, assetName);
+    return downloadAndExtractRelease(VALGRIND_BUILDER_REPO, version, assetName, githubToken);
 }
 
 async function verifySha(
