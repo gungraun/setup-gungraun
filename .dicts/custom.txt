@@ -1,6 +1,7 @@
 armv7
 binstall
 debuginfo
+debuginfod
 endgroup
 gungraun
 INSTALL_DIR
@@ -13,4 +14,5 @@ noconfirm
 pacman
 pkgid
 rustc
+showduplicates
 sourceware

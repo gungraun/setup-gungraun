@@ -33,6 +33,10 @@ export class Version {
         return new Version(-1, 0, 0);
     }
 
+    compare(other: Version): number {
+        return this.major - other.major || this.minor - other.minor || this.patch - other.patch;
+    }
+
     isLatest(): boolean {
         return this.major === -1;
     }

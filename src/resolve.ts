@@ -101,14 +101,7 @@ export async function resolveValgrindBuilderAssetName(
                 };
             })
             .sort((a, b) => {
-                const { version: versionA } = a;
-                const { version: versionB } = b;
-
-                return (
-                    versionA.major - versionB.major ||
-                    versionA.minor - versionB.minor ||
-                    versionA.patch - versionB.patch
-                );
+                return a.version.compare(b.version);
             });
 
         return sorted[sorted.length - 1] ?? null;
@@ -166,6 +159,6 @@ export async function resolveValgrindSourceTag(version: Version): Promise<Resolv
         throw new Error("Could not determine latest valgrind version from sourceware.org");
     }
 
-    versions.sort((a, b) => a.major - b.major || a.minor - b.minor || a.patch - b.patch);
+    versions.sort((a, b) => a.compare(b));
     return versions[versions.length - 1];
 }
