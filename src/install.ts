@@ -25,32 +25,9 @@ import {
     printWarning,
     withGroup,
 } from "./utils";
-import { ResolvedVersion, Version } from "./version";
+import { Version } from "./version";
 import { RunnerStrategy, ValgrindStrategy } from "./inputs";
-
-// FIX: The autoconf, automake packages shouldn't be necessary with the tarball download. Also fix
-// this in the valgrind from source function
-const VALGRIND_BUILD_DEPS: Record<string, string[]> = {
-    "apt-get": ["autoconf", "automake", "gcc", "make", "bzip2"],
-    dnf: ["autoconf", "automake", "gcc", "make", "bzip2"],
-    yum: ["autoconf", "automake", "gcc", "make", "bzip2"],
-    pacman: ["autoconf", "automake", "gcc", "make", "bzip2"],
-    zypper: ["autoconf", "automake", "gcc", "make", "bzip2"],
-    // The busybox sed doesn't work with the configure script
-    apk: ["build-dev", "bzip2", "sed", "perl", "linux-headers"],
-};
-
-const DEBUGINFO_PACKAGES: Record<string, string[]> = {
-    "apt-get": ["libc6-dbg"],
-    dnf: ["glibc-debuginfo"],
-    yum: ["glibc-debuginfo"],
-    // Arch linux doesn't ship the debug symbols with glibc and doesn't have them as a separate
-    // package. Instead, arch linux relies on debuginfod.
-    pacman: ["debuginfod"],
-    // This package is part of the `--plus-content debug` repository
-    zypper: ["glibc-debuginfo"],
-    apk: ["musl-dbg"],
-};
+import { PackagesInstaller as PackagesInstaller, FetchLatestPackageVersion } from "./platform";
 
 export function getRunnerInstallDir(): { dir: string; needsExport: boolean } | null {
     if (process.env.CARGO_INSTALL_ROOT) {
@@ -69,103 +46,14 @@ export function getRunnerInstallDir(): { dir: string; needsExport: boolean } | n
     return null;
 }
 
-export async function getValgrindPackageVersion(packageManager: string): Promise<Version | null> {
-    let output: string | null;
-    switch (packageManager) {
-        case "apt-get": {
-            await exec.exec("sudo", ["apt-get", "update", "-qq"], { silent: true });
-            output = await getVersionOutput(["apt-cache", "policy", "valgrind"]);
-            break;
-        }
-        case "dnf": {
-            output = await getVersionOutput(["dnf", "list", "--showduplicates", "valgrind"]);
-            break;
-        }
-        case "yum": {
-            try {
-                output = await getVersionOutput(["yum", "list", "--showduplicates", "valgrind"]);
-            } catch {
-                output = await getVersionOutput(["dnf", "list", "--showduplicates", "valgrind"]);
-            }
-            break;
-        }
-        case "pacman": {
-            output = await getVersionOutput(["pacman", "-Syi", "valgrind"]);
-            break;
-        }
-        case "zypper": {
-            output = await getVersionOutput(["zypper", "info", "valgrind"]);
-            break;
-        }
-        case "apk": {
-            await exec.exec("sudo", ["apk", "update"], { silent: true });
-            output = await getVersionOutput(["apk", "policy", "valgrind"]);
-            break;
-        }
-        default:
-            throw new Error(`Unsupported package manager: ${packageManager}`);
-    }
-
-    const versions = extractVersionFromOutput(packageManager, output)
-        ?.map((v) => ResolvedVersion.from_tag(v))
-        .sort((a, b) => a.compare(b));
-
-    if (versions) {
-        return versions[versions.length - 1];
-    }
-
-    return null;
-}
-
-export function extractVersionFromOutput(packageManager: string, output: string): string[] | null {
-    let match;
-    switch (packageManager) {
-        // sample: "  Installed: (none)\n  Candidate: 1:3.15.0-1"
-        case "apt-get":
-            match = output.match("/Candidate:\s*([^\s]+)/");
-        // sample: "valgrind.x86_64   3.17.0-1.fc34   updates"
-        case "yum":
-        case "dnf":
-            match = output.match("/^valgrind[^\n]*\s+([^\s]+)\s/m");
-        // sample: "Version         : 3.17.0-1"
-        case "pacman":
-            match = output.match("/^Version\s*:\s*([^\s]+)/m");
-        // sample: "Version   : 3.17.0-1.1"
-        case "zypper":
-            match = output.match("/Version\s*:\s*([^\s]+)/");
-            break;
-        // samples info: "valgrind-3.17.0-r0 description:\n..."
-        // sample policy:
-        // "valgrind policy:
-        //   3.25.1-r2:
-        //     https://dl-cdn.alpinelinux.org/alpine/v3.23/main"
-        case "apk":
-            match =
-                // output of apk policy
-                output.match("/valgrind\s*policy:\r?\n\s*([^\s\n\r:]+):/") ??
-                // output of apk info
-                output.match("/^valgrind-([^\s:]+)\s*description/m");
-            break;
-        default:
-            throw new Error(`Unsupported package manager: ${packageManager}`);
-    }
-
-    return match?.map((m) => m![1]) ?? null;
-}
-
-export async function getVersionOutput(args: string[]): Promise<string> {
-    const { stdout } = await exec.getExecOutput("sudo", args, {
-        silent: true,
-    });
-    return stdout;
-}
-
 export async function installDebugSymbols(): Promise<void> {
     let warning = false;
     try {
         const { packageManager } = await detectPlatform();
         if (packageManager) {
-            await installWithPackageManager(packageManager, ...DEBUGINFO_PACKAGES[packageManager]);
+            await packageManager.accept(
+                new PackagesInstaller(...packageManager.getDebugInfoPackages()),
+            );
         } else {
             warning = true;
         }
@@ -454,8 +342,7 @@ export async function installValgrindFromBuilder(
     });
 }
 
-// TODO: If there is a specific version requested, then the package manager should not install
-// another version. Also, add a `auto` value in addition to `latest` as valid input. And use latest
+// TODO: Add a `auto` value in addition to `latest` as valid input. Use latest
 // as the latest possible version from sourceware. `auto` would install any version with the package
 // manager. the other strategies would use `latest`.
 /** Installs valgrind using the system package manager. */
@@ -473,7 +360,9 @@ export async function installValgrindWithPackageManager(version: Version): Promi
 
         try {
             const sourceVersion = await resolveValgrindSourceTag(version);
-            const packageVersion = await getValgrindPackageVersion(packageManager);
+            const packageVersion = await packageManager.accept(
+                new FetchLatestPackageVersion("valgrind"),
+            );
 
             if (!packageVersion) {
                 printError(`Unable to retrieve version information with ${packageManager}.`);
@@ -492,10 +381,8 @@ export async function installValgrindWithPackageManager(version: Version): Promi
         }
 
         try {
-            await installWithPackageManager(
-                packageManager,
-                "valgrind",
-                ...DEBUGINFO_PACKAGES[packageManager],
+            await packageManager.accept(
+                new PackagesInstaller("valgrind", ...packageManager.getDebugInfoPackages()),
             );
 
             await logInstalledVersion("valgrind", "valgrind");
@@ -513,21 +400,17 @@ export async function installValgrindWithPackageManager(version: Version): Promi
 
 /** Installs build dependencies required to compile valgrind from source. */
 export async function installValgrindBuildDeps(): Promise<boolean> {
-    const { packageManager } = await detectPlatform();
-
-    if (!packageManager || !VALGRIND_BUILD_DEPS[packageManager]) {
-        printError(
-            `Cannot install build dependencies: unsupported package manager '${packageManager}'`,
-        );
-
-        return false;
-    }
-
-    const packages = VALGRIND_BUILD_DEPS[packageManager];
-
     return withGroup("Installing valgrind build dependencies", async () => {
+        const { packageManager } = await detectPlatform();
+
+        if (!packageManager) {
+            printError(`Cannot install build dependencies: unsupported package manager`);
+            return false;
+        }
+
         try {
-            await installWithPackageManager(packageManager, ...packages);
+            const packages = packageManager.getValgrindBuildDeps();
+            await packageManager.accept(new PackagesInstaller(...packages));
             printInfo(`Installed build dependencies: ${packages.join(", ")}`);
 
             return true;
@@ -559,7 +442,6 @@ export async function installValgrindFromSource(
             const extractDir = await downloadAndExtractValgrindSource(resolvedVersion);
             const sourceDir = path.join(extractDir, `valgrind-${resolvedVersion}`);
 
-            await exec.exec("./autogen.sh", [], { cwd: sourceDir });
             await exec.exec("./configure", ["--prefix=/usr"], { cwd: sourceDir });
 
             const ncpus = os.cpus().length;
@@ -575,47 +457,4 @@ export async function installValgrindFromSource(
         await installDebugSymbols();
         return true;
     });
-}
-
-export async function installWithPackageManager(
-    packageManager: string,
-    ...packages: string[]
-): Promise<void> {
-    if (packages.length > 0) {
-        switch (packageManager) {
-            case "apt-get":
-                await exec.exec("sudo", ["apt-get", "update", "-qq"], { silent: true });
-                await exec.exec("sudo", ["apt-get", "install", "-y", ...packages]);
-                break;
-            case "dnf":
-                await exec.exec("sudo", ["dnf", "install", "-y", ...packages]);
-                break;
-            case "yum":
-                try {
-                    await exec.exec("sudo", ["yum", "install", "-y", ...packages]);
-                } catch {
-                    await exec.exec("sudo", ["dnf", "install", "-y", ...packages]);
-                }
-                break;
-            case "pacman":
-                await exec.exec("sudo", ["pacman", "-Sy", "--noconfirm", ...packages]);
-                break;
-            case "zypper":
-                await exec.exec("sudo", [
-                    "zypper",
-                    "--non-interactive",
-                    "--plus-content",
-                    "debug",
-                    "install",
-                    ...packages,
-                ]);
-                break;
-            case "apk":
-                await exec.exec("sudo", ["apk", "update"], { silent: true });
-                await exec.exec("sudo", ["apk", "add", "--interactive=no", ...packages]);
-                break;
-            default:
-                throw new Error(`Unsupported package manager: ${packageManager}`);
-        }
-    }
 }

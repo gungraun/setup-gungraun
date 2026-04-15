@@ -2,6 +2,7 @@ import * as exec from "@actions/exec";
 import * as fs from "fs";
 import { getCargoBin } from "./utils";
 import { ResolvedVersion } from "./version";
+import { Apk, AptGet, Dnf, PackageManager, Pacman, Yum, Zypper } from "./platform";
 
 /** Platform information detected from /etc/os-release. */
 export interface PlatformInfo {
@@ -12,24 +13,24 @@ export interface PlatformInfo {
     /** Combined platform string (e.g., "ubuntu-22.04" or "arch-unknown"). */
     platform: string;
     /** Detected package manager, or null if unknown. */
-    packageManager: string | null;
+    packageManager: PackageManager | null;
 }
 
-const ID_LIKE_PATTERNS: [RegExp, string][] = [
-    [/debian/, "apt-get"],
-    [/fedora/, "dnf"],
-    [/suse/, "zypper"],
-    [/arch/, "pacman"],
-    [/alpine/, "apk"],
+const ID_LIKE_PATTERNS: [RegExp, PackageManager][] = [
+    [/debian/, new AptGet()],
+    [/fedora/, new Dnf()],
+    [/suse/, new Zypper()],
+    [/arch/, new Pacman()],
+    [/alpine/, new Apk()],
 ];
 
 // No suse, since suse is an ID_LIKE
-const PACKAGE_MANAGERS: Record<string, string> = {
-    debian: "apt-get",
-    fedora: "dnf",
-    arch: "pacman",
-    alpine: "apk",
-    amzn: "yum",
+const PACKAGE_MANAGERS: Record<string, PackageManager> = {
+    debian: new AptGet(),
+    fedora: new Dnf(),
+    arch: new Pacman(),
+    alpine: new Apk(),
+    amzn: new Yum(),
 };
 
 /** Extracts the architecture prefix from a Rust target triple. */
@@ -150,7 +151,7 @@ export async function detectTarget(): Promise<string> {
 }
 
 /** Resolves the package manager for a distro using its ID and ID_LIKE fields. */
-export function resolvePackageManager(id: string, idLike: string | null): string | null {
+export function resolvePackageManager(id: string, idLike: string | null): PackageManager | null {
     if (idLike) {
         for (const [pattern, pm] of ID_LIKE_PATTERNS) {
             if (pattern.test(idLike)) {
