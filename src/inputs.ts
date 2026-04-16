@@ -1,7 +1,8 @@
 import * as core from "@actions/core";
-import { Version } from "./version";
+import { ResolvedVersion, Version } from "./version";
 import { detectProjectVersion, detectTarget } from "./detect";
 import { bail } from "./utils";
+import { fetchRunnerVersions, fetchSortedValgrindVersions } from "./resolve";
 
 export type ValgrindStrategy = "builder" | "system" | "source" | "none";
 export type RunnerStrategy = "binstall" | "release" | "source" | "none";
@@ -42,7 +43,7 @@ export async function parseInputs(): Promise<Inputs> {
     const installBuildDeps = await parseInstallBuildDeps();
     const runnerStrategies = await parseRunnerStrategies();
     const runnerTarget = await parseRunnerTarget();
-    const runnerVersion = await parseRunnerVersion();
+    const runnerVersion = await parseRunnerVersion(githubToken);
     const valgrindVersion = await parseValgrindVersion();
     const valgrindStrategies = await parseValgrindStrategies();
     const valgrindUrl = await parseValgrindUrl();
@@ -77,21 +78,30 @@ export async function parseRunnerStrategies(): Promise<RunnerStrategy[]> {
     }
 }
 
-export async function parseRunnerVersion(): Promise<Version> {
+export async function parseRunnerVersion(githubToken: string): Promise<Version> {
     let runnerVersionInput = core.getInput("runner-version") || "auto";
     let runnerVersion: Version;
 
-    if (runnerVersionInput === "auto") {
+    if (runnerVersionInput.toLowerCase() === "auto") {
         try {
             runnerVersion = await detectProjectVersion();
         } catch (error) {
             bail(`Unable to detect gungraun-runner version: ${(error as Error).message}`);
         }
     } else {
+        let validVersions: ResolvedVersion[];
         try {
+            validVersions = await fetchRunnerVersions(githubToken);
             runnerVersion = Version.from_tag(runnerVersionInput);
         } catch (error) {
-            bail(`Invalid runner-version: ${(error as Error).message}`);
+            bail(`Failed to fetch gungraun-runner versions: ${(error as Error).message}`);
+        }
+
+        if (!runnerVersion.isAutoOrLatest() && !validVersions.includes(runnerVersion)) {
+            bail(
+                `Invalid runner-version ${runnerVersionInput}: Valid versions are:
+${validVersions.join(", ")}`,
+            );
         }
     }
 
@@ -146,12 +156,33 @@ export async function parseValgrindShaUrl(): Promise<string> {
 }
 
 export async function parseValgrindVersion(): Promise<Version> {
+    let valgrindVersionInput: string;
+    let valgrindVersion: Version;
+
     try {
-        const valgrindVersionInput = core.getInput("valgrind-version") || "latest";
-        return Version.from_tag(valgrindVersionInput);
+        valgrindVersionInput = core.getInput("valgrind-version") || "latest";
+        valgrindVersion = Version.from_tag(valgrindVersionInput);
     } catch (error) {
-        bail(`Invalid valgrind-version: ${(error as Error).message}`);
+        bail(`Invalid valgrind-version: ${(error as Error).message} `);
     }
+
+    if (!valgrindVersion.isAutoOrLatest()) {
+        let validVersions: ResolvedVersion[];
+        try {
+            validVersions = (await fetchSortedValgrindVersions()).filter(
+                (v) => v.major >= 3 && v.minor >= 16,
+            );
+        } catch {
+            bail(`Failed to validate valgrind version`);
+        }
+
+        if (!validVersions.includes(valgrindVersion)) {
+            bail(`Invalid valgrind-version '${valgrindVersionInput}': Supported versions are:
+${validVersions.join(", ")}`);
+        }
+    }
+
+    return valgrindVersion;
 }
 
 export async function parseInstallBuildDeps(): Promise<boolean> {

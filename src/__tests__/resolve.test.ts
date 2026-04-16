@@ -1,4 +1,10 @@
-import { cargoVersionFormat, escapeRegex, resolveVersion, resolveValgrindTag, resolveValgrindSourceTag } from "../resolve";
+import {
+    cargoVersionFormat,
+    escapeRegex,
+    resolveRunnerVersion,
+    resolveValgrindTag,
+    resolveValgrindVersion,
+} from "../resolve";
 import * as exec from "@actions/exec";
 import { getOctokit } from "@actions/github";
 
@@ -59,12 +65,12 @@ describe("resolveVersion", () => {
     });
 
     it("returns version unchanged when not 'latest'", async () => {
-        const result = await resolveVersion("v1.0.0");
+        const result = await resolveRunnerVersion("v1.0.0");
         expect(result).toBe("v1.0.0");
     });
 
     it("returns version unchanged for arbitrary strings", async () => {
-        const result = await resolveVersion("1.2.3");
+        const result = await resolveRunnerVersion("1.2.3");
         expect(result).toBe("1.2.3");
     });
 
@@ -72,7 +78,7 @@ describe("resolveVersion", () => {
         process.env.GITHUB_TOKEN = "fake-token";
         mockGetLatestRelease.mockResolvedValue({ data: { tag_name: "v2.0.0" } });
 
-        const result = await resolveVersion("latest");
+        const result = await resolveRunnerVersion("latest");
         expect(result).toBe("v2.0.0");
         expect(mockGetLatestRelease).toHaveBeenCalledWith(
             expect.objectContaining({ owner: "gungraun", repo: "gungraun" }),
@@ -85,7 +91,7 @@ describe("resolveVersion", () => {
         const originalToken = process.env.GITHUB_TOKEN;
         delete process.env.GITHUB_TOKEN;
 
-        await expect(resolveVersion("latest")).rejects.toThrow(
+        await expect(resolveRunnerVersion("latest")).rejects.toThrow(
             "Could not determine latest release version for gungraun-runner",
         );
 
@@ -96,7 +102,7 @@ describe("resolveVersion", () => {
         process.env.GITHUB_TOKEN = "fake-token";
         mockGetLatestRelease.mockRejectedValue(new Error("API error"));
 
-        await expect(resolveVersion("latest")).rejects.toThrow(
+        await expect(resolveRunnerVersion("latest")).rejects.toThrow(
             "Could not determine latest release version for gungraun-runner",
         );
 
@@ -145,12 +151,12 @@ describe("resolveValgrindSourceTag", () => {
     });
 
     it("returns version with v prefix stripped when not 'latest'", async () => {
-        const result = await resolveValgrindSourceTag("v3.20.0");
+        const result = await resolveValgrindVersion("v3.20.0");
         expect(result).toBe("3.20.0");
     });
 
     it("returns version unchanged when no v prefix", async () => {
-        const result = await resolveValgrindSourceTag("3.20.0");
+        const result = await resolveValgrindVersion("3.20.0");
         expect(result).toBe("3.20.0");
     });
 
@@ -167,7 +173,7 @@ describe("resolveValgrindSourceTag", () => {
             exitCode: 0,
         });
 
-        const result = await resolveValgrindSourceTag("latest");
+        const result = await resolveValgrindVersion("latest");
         expect(result).toBe("3.26.0");
     });
 
@@ -182,7 +188,7 @@ describe("resolveValgrindSourceTag", () => {
             exitCode: 0,
         });
 
-        const result = await resolveValgrindSourceTag("latest");
+        const result = await resolveValgrindVersion("latest");
         expect(result).toBe("3.26.0");
     });
 
@@ -197,7 +203,7 @@ describe("resolveValgrindSourceTag", () => {
             exitCode: 0,
         });
 
-        const result = await resolveValgrindSourceTag("latest");
+        const result = await resolveValgrindVersion("latest");
         expect(result).toBe("3.26.0");
     });
 
@@ -213,7 +219,7 @@ describe("resolveValgrindSourceTag", () => {
             exitCode: 0,
         });
 
-        const result = await resolveValgrindSourceTag("latest");
+        const result = await resolveValgrindVersion("latest");
         expect(result).toBe("3.26.0");
     });
 
@@ -224,7 +230,7 @@ describe("resolveValgrindSourceTag", () => {
             exitCode: 0,
         });
 
-        await expect(resolveValgrindSourceTag("latest")).rejects.toThrow(
+        await expect(resolveValgrindVersion("latest")).rejects.toThrow(
             "Could not determine latest valgrind version from sourceware.org",
         );
     });

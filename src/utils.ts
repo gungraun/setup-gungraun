@@ -4,12 +4,16 @@ import * as fs from "fs";
 import * as path from "path";
 
 /** GitHub repository for gungraun-runner releases. */
-export const GITHUB_REPO = "gungraun/gungraun";
+export const GUNGRAUN_REPO = "gungraun/gungraun";
 
 /** GitHub repository for valgrind-builder releases. */
 export const VALGRIND_BUILDER_REPO = "gungraun/valgrind-builder";
 
-/** Ends the current log group. */
+export const VALGRIND_SOURCE_REPO = "https://sourceware.org/git/valgrind.git";
+
+/**
+ * Ends the current log group.
+ */
 export function endGroup(): void {
     core.endGroup();
 }

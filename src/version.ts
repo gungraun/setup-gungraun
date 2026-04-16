@@ -14,18 +14,24 @@ export class Version {
         if (match) {
             return new Version(+match[1], +match[2], +match[3]);
         }
+
         throw new Error(`Invalid valgrind version tag: ${tag}`);
     }
 
     static from_tag(tag: string): Version {
-        if (tag.trim() === "latest") {
+        const lowerTag = tag.trim().toLowerCase();
+
+        if (lowerTag === "latest") {
             return this.latest();
+        } else if (lowerTag === "auto") {
+            return this.auto();
         }
 
-        const match = tag.match(/[v]?(\d+)\.(\d+)\.(\d+)/);
+        const match = lowerTag.match(/[v]?(\d+)\.(\d+)\.(\d+)/);
         if (match) {
             return new Version(+match[1], +match[2], +match[3]);
         }
+
         throw new Error(`Invalid version tag: ${tag}`);
     }
 
@@ -33,27 +39,62 @@ export class Version {
         return new Version(-1, 0, 0);
     }
 
-    compare(other: Version): number {
+    static auto(): Version {
+        return new Version(-2, 0, 0);
+    }
+
+    /**
+     * Compares this version with another version
+     *
+     * Returns a negative number if this version is smaller than the other version, zero if they are
+     * equal and a positive number otherwise. The result of this function can be used for the `sort`
+     * function of `Array.sort`.
+     *
+     * Special cases: auto < latest < semver
+     *
+     * @param other: The other version
+     */
+    compare(other: this): number {
         return this.major - other.major || this.minor - other.minor || this.patch - other.patch;
+    }
+
+    isAuto(): boolean {
+        return this.major === -2;
     }
 
     isLatest(): boolean {
         return this.major === -1;
     }
 
+    isAutoOrLatest(): boolean {
+        return this.isAuto() || this.isLatest();
+    }
+
     toString(): string {
-        return this.isLatest() ? "latest" : `${this.major}.${this.minor}.${this.patch}`;
+        if (this.isLatest()) {
+            return "latest";
+        } else if (this.isAuto()) {
+            return "auto";
+        }
+
+        return `${this.major}.${this.minor}.${this.patch}`;
     }
 
     withPrefix(): string {
-        return this.isLatest() ? "latest" : `v${this.toString()}`;
+        if (this.isLatest()) {
+            return "latest";
+        } else if (this.isAuto()) {
+            return "auto";
+        }
+
+        return `v${this.toString()}`;
     }
 }
 
 export class ResolvedVersion extends Version {
     constructor(major: number, minor: number, patch: number) {
-        if (major === -1) {
-            throw new Error("A resolved version cannot be 'latest'");
+        if (major === -1 || major === -2) {
+            throw new Error("A resolved version cannot be 'latest' or 'auto'");
         }
 
         super(major, minor, patch);
@@ -66,8 +107,8 @@ export class ResolvedVersion extends Version {
 
     static from_tag(tag: string): ResolvedVersion {
         let version = super.from_tag(tag);
-        if (version.isLatest()) {
-            throw new Error("A resolved version cannot be 'latest'");
+        if (version.isLatest() || version.isAuto()) {
+            throw new Error("A resolved version cannot be 'latest' or 'auto'");
         }
 
         return ResolvedVersion.from_version(version);
@@ -81,7 +122,19 @@ export class ResolvedVersion extends Version {
         throw new Error("A resolved version cannot be 'latest'");
     }
 
+    static auto(): ResolvedVersion {
+        throw new Error("A resolved version cannot be 'auto'");
+    }
+
     isLatest(): boolean {
+        return false;
+    }
+
+    isAuto(): boolean {
+        return false;
+    }
+
+    isAutoOrLatest(): boolean {
         return false;
     }
 

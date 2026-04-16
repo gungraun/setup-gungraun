@@ -2,7 +2,7 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as tc from "@actions/tool-cache";
 import { getReleaseAssets } from "./resolve";
-import { GITHUB_REPO, VALGRIND_BUILDER_REPO, printInfo } from "./utils";
+import { GUNGRAUN_REPO, VALGRIND_BUILDER_REPO, printInfo } from "./utils";
 import { ResolvedVersion } from "./version";
 import path from "path";
 import { detectShaVariant } from "./detect";
@@ -14,7 +14,7 @@ export async function downloadAndExtractRunner(
     githubToken: string,
 ): Promise<string> {
     const assetName = `gungraun-runner-${version.withPrefix()}-${target}.tar.gz`;
-    return downloadAndExtractRelease(GITHUB_REPO, version, assetName, githubToken);
+    return downloadAndExtractRelease(GUNGRAUN_REPO, version, assetName, githubToken);
 }
 
 async function downloadAndExtractRelease(

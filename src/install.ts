@@ -13,8 +13,8 @@ import {
 } from "./download";
 import {
     resolveValgrindBuilderAssetName,
-    resolveValgrindSourceTag,
-    resolveVersion,
+    resolveValgrindVersion as resolveValgrindVersion,
+    resolveRunnerVersion,
 } from "./resolve";
 import {
     findBinary,
@@ -25,7 +25,7 @@ import {
     printWarning,
     withGroup,
 } from "./utils";
-import { Version } from "./version";
+import { ResolvedVersion, Version } from "./version";
 import { RunnerStrategy, ValgrindStrategy } from "./inputs";
 import { PackagesInstaller as PackagesInstaller, FetchLatestPackageVersion } from "./platform";
 
@@ -114,7 +114,7 @@ export async function installRunnerFromRelease(
 ): Promise<boolean> {
     return withGroup(`Downloading gungraun-runner '${version}'`, async () => {
         try {
-            const resolvedVersion = await resolveVersion(version, githubToken);
+            const resolvedVersion = await resolveRunnerVersion(version, githubToken);
             const extractDir = await downloadAndExtractRunner(resolvedVersion, target, githubToken);
 
             const binaryPath = path.join(extractDir, "gungraun-runner");
@@ -250,7 +250,7 @@ export async function installValgrind(
         switch (strategy) {
             case "builder": {
                 const result = await installValgrindFromBuilder(
-                    version,
+                    version.isAuto() ? Version.latest() : version,
                     githubToken,
                     valgrindUrl,
                     valgrindShaUrl,
@@ -264,7 +264,10 @@ export async function installValgrind(
                 break;
             }
             case "source": {
-                const result = await installValgrindFromSource(version, installBuildDeps);
+                const result = await installValgrindFromSource(
+                    version.isAuto() ? Version.latest() : version,
+                    installBuildDeps,
+                );
                 if (result) return;
                 break;
             }
@@ -342,9 +345,6 @@ export async function installValgrindFromBuilder(
     });
 }
 
-// TODO: Add a `auto` value in addition to `latest` as valid input. Use latest
-// as the latest possible version from sourceware. `auto` would install any version with the package
-// manager. the other strategies would use `latest`.
 /** Installs valgrind using the system package manager. */
 export async function installValgrindWithPackageManager(version: Version): Promise<boolean> {
     return withGroup("Installing valgrind via package manager", async () => {
@@ -358,26 +358,28 @@ export async function installValgrindWithPackageManager(version: Version): Promi
             return false;
         }
 
-        try {
-            const sourceVersion = await resolveValgrindSourceTag(version);
-            const packageVersion = await packageManager.accept(
-                new FetchLatestPackageVersion("valgrind"),
-            );
+        if (!version.isAuto()) {
+            try {
+                const latestVersion = await resolveValgrindVersion(version);
+                const packageVersion = await packageManager.accept(
+                    new FetchLatestPackageVersion("valgrind"),
+                );
 
-            if (!packageVersion) {
-                printError(`Unable to retrieve version information with ${packageManager}.`);
+                if (!packageVersion) {
+                    printError(`Unable to retrieve version information with ${packageManager}.`);
+                    return false;
+                } else if (latestVersion !== packageVersion) {
+                    printError(`The package version doesn't match the requested version`);
+                    return false;
+                } else {
+                    // pass through to install with package manger
+                }
+            } catch (error) {
+                printError(
+                    `Error retrieving package version with ${packageManager}: ${(error as Error).message}`,
+                );
                 return false;
-            } else if (sourceVersion !== packageVersion) {
-                printError(`The package version doesn't match the requested version`);
-                return false;
-            } else {
-                // pass through to install with package manger
             }
-        } catch (error) {
-            printError(
-                `Error retrieving package version with ${packageManager}: ${(error as Error).message}`,
-            );
-            return false;
         }
 
         try {
@@ -429,7 +431,7 @@ export async function installValgrindFromSource(
 ): Promise<boolean> {
     return withGroup("Installing valgrind from source", async () => {
         try {
-            const resolvedVersion = await resolveValgrindSourceTag(version);
+            const resolvedVersion = await resolveValgrindVersion(version);
 
             if (installBuildDeps) {
                 const depsResult = await installValgrindBuildDeps();

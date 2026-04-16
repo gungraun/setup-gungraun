@@ -1,9 +1,7 @@
 import * as exec from "@actions/exec";
 import { getOctokit } from "@actions/github";
-import { escapeRegex, GITHUB_REPO, VALGRIND_BUILDER_REPO } from "./utils";
+import { escapeRegex, GUNGRAUN_REPO, VALGRIND_BUILDER_REPO, VALGRIND_SOURCE_REPO } from "./utils";
 import { ResolvedVersion, Version } from "./version";
-
-const VALGRIND_SOURCE_REPO = "https://sourceware.org/git/valgrind.git";
 
 interface ReleaseAsset {
     name: string;
@@ -82,7 +80,7 @@ export async function resolveValgrindBuilderAssetName(
     const release = await getReleaseAssets(VALGRIND_BUILDER_REPO, Version.latest(), githubToken);
 
     // Example: valgrind-3.19.0-x86_64-ubuntu-22.04.tar.gz
-    if (version.isLatest()) {
+    if (version.isAutoOrLatest()) {
         const pattern = new RegExp(
             `^valgrind-(\\d+)\\.(\\d+)\\.(\\d+)-${escapeRegex(arch)}-${escapeRegex(platform)}\\.tar\\.gz$`,
         );
@@ -120,27 +118,51 @@ export async function resolveValgrindBuilderAssetName(
 }
 
 /** Resolves a gungraun-runner version tag, fetching "latest" from GitHub if needed. */
-export async function resolveVersion(
+export async function resolveRunnerVersion(
     version: Version,
     githubToken: string,
 ): Promise<ResolvedVersion> {
-    if (!version.isLatest()) {
+    if (!version.isAutoOrLatest()) {
         return version;
     }
 
     return await resolveLatestTag(
-        GITHUB_REPO,
+        GUNGRAUN_REPO,
         "Could not determine latest release version for gungraun-runner",
         githubToken,
     );
 }
 
-/** Resolves a valgrind version for building from source, using git ls-remote for "latest". */
-export async function resolveValgrindSourceTag(version: Version): Promise<ResolvedVersion> {
-    if (!version.isLatest()) {
-        return version;
+export async function fetchRunnerVersions(githubToken: string): Promise<ResolvedVersion[]> {
+    try {
+        const octokit = getOctokit(githubToken);
+        const [owner, repoName] = GUNGRAUN_REPO.split("/");
+        const { data } = await octokit.rest.repos.listReleases({
+            owner,
+            repo: repoName,
+        });
+        return data.map((d) => ResolvedVersion.from_tag(d.tag_name));
+    } catch (error) {
+        throw new Error(`Failed to fetch gungraun-runner versions: ${(error as Error).message}`);
+    }
+}
+
+/** Resolves a valgrind version for building from source, using git ls-remote for "latest" and
+ * "auto". */
+export async function resolveValgrindVersion(version: Version): Promise<ResolvedVersion> {
+    const versions = await fetchSortedValgrindVersions();
+    if (!version.isAutoOrLatest()) {
+        if (versions.includes(version)) {
+            return version;
+        } else {
+            throw new Error(`Invalid version ${version}`);
+        }
     }
 
+    return versions[versions.length - 1];
+}
+
+export async function fetchSortedValgrindVersions(): Promise<ResolvedVersion[]> {
     const { stdout } = await exec.getExecOutput(
         "git",
         ["ls-remote", "--tags", VALGRIND_SOURCE_REPO],
@@ -149,16 +171,16 @@ export async function resolveValgrindSourceTag(version: Version): Promise<Resolv
         },
     );
 
-    const versions: ResolvedVersion[] = [];
-    for (const line of stdout.trim().split("\n")) {
-        if (line.includes("^{}")) continue;
-        versions.push(ResolvedVersion.from_valgrind_tag(line));
-    }
+    const versions = stdout
+        .trim()
+        .split("\n")
+        .filter((l) => !l.includes("^{}"))
+        .map((l) => ResolvedVersion.from_valgrind_tag(l))
+        .sort((a, b) => a.compare(b));
 
     if (versions.length === 0) {
         throw new Error("Could not determine latest valgrind version from sourceware.org");
     }
 
-    versions.sort((a, b) => a.compare(b));
-    return versions[versions.length - 1];
+    return versions;
 }

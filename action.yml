@@ -38,7 +38,7 @@ inputs:
     required: false
     default: ""
   valgrind-version:
-    description: "Valgrind release tag (e.g. v0.1.1, latest)"
+    description: "Valgrind release tag (e.g. v0.1.1, latest) or auto which installs the the latest possible version for the strategy"
     required: false
     default: "latest"
 
