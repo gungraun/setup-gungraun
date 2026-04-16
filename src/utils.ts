@@ -51,8 +51,8 @@ export async function findBinary(dir: string, name: string): Promise<string | nu
     const entries = fs.readdirSync(dir, { withFileTypes: true, recursive: true });
     for (const entry of entries) {
         if (entry.isFile() && entry.name === name) {
-            // The deprecation warning is ok. This supports node versions down to 18.17
-            return path.join(entry.parentPath ?? entry.path, entry.name);
+            // entry.parentPath is supported by node versions from 20 upwards
+            return path.join(entry.parentPath, entry.name);
         }
     }
     return null;

@@ -107,12 +107,13 @@ async function verifySha(
         throw new Error(`Could not find SHA-${variant} entry for ${expectedName} in checksum file`);
     }
 
-    let shaVariant;
+    let shaVariant: string;
     if (variant === "auto") {
-        shaVariant = detectShaVariant(expectedHash);
-        if (!shaVariant) {
+        const detected = detectShaVariant(expectedHash);
+        if (!detected) {
             throw new Error("Unable to detect sha variant");
         }
+        shaVariant = detected;
     } else {
         shaVariant = "sha" + variant;
     }

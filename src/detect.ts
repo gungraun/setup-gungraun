@@ -39,7 +39,7 @@ export function detectArch(target: string): string {
 }
 
 export function detectShaVariant(hash: string): string | null {
-    let variant;
+    let variant: number;
 
     switch (hash.length) {
         case 40:

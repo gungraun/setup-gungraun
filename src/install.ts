@@ -25,7 +25,7 @@ import {
     printWarning,
     withGroup,
 } from "./utils";
-import { ResolvedVersion, Version } from "./version";
+import { Version } from "./version";
 import { RunnerStrategy, ValgrindStrategy } from "./inputs";
 import { PackagesInstaller as PackagesInstaller, FetchLatestPackageVersion } from "./platform";
 
@@ -295,7 +295,7 @@ export async function installValgrindFromBuilder(
 ): Promise<boolean> {
     return withGroup("Installing valgrind from builder", async () => {
         try {
-            let extractDir;
+            let extractDir: string;
             if (valgrindUrl) {
                 printInfo(`Downloading valgrind archive from url '${valgrindUrl}'`);
 
