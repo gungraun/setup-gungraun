@@ -1,9 +1,12 @@
+actualhash
 AGENTS
 armv7
+badsingleword
 binstall
 debuginfo
 debuginfod
 endgroup
+expectedhash
 fakeDirents
 gungraun
 INSTALL_DIR

@@ -64,6 +64,12 @@ export async function logInstalledVersion(
     printInfo(`${label} installed: ${stdout.trim() || fallback || "version unknown"}`);
 }
 
+// TODO: TEST
+export function normalizePath(path: string): string {
+    const trimmed = path.trim();
+    return trimmed.startsWith("./") ? trimmed.slice(2) : trimmed;
+}
+
 /** Logs a error message. */
 export function printError(message: string): void {
     core.error(message);
@@ -77,6 +83,13 @@ export function printInfo(message: string): void {
 /** Logs a warning message. */
 export function printWarning(message: string): void {
     core.warning(message);
+}
+
+// TODO: TEST
+export function splitOnce(str: string, sep: string): [string, string] {
+    const i = str.indexOf(sep);
+    if (i === -1) return [str, ""];
+    return [str.slice(0, i), str.slice(i + sep.length)];
 }
 
 /** Runs an async function within a named log group, ensuring the group is closed. */

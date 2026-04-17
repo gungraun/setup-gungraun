@@ -1,11 +1,9 @@
-import * as crypto from "crypto";
-import * as fs from "fs";
 import * as tc from "@actions/tool-cache";
 import { fetchReleaseAssetData } from "./resolve";
-import { GUNGRAUN_REPO, VALGRIND_BUILDER_REPO, printInfo } from "./utils";
+import { GUNGRAUN_REPO, VALGRIND_BUILDER_REPO } from "./utils";
 import { ResolvedVersion } from "./version";
 import path from "path";
-import { detectShaVariant } from "./detect";
+import { verifySha } from "./hash";
 
 /** Downloads and extracts the gungraun-runner release archive for a given tag and target. */
 export async function downloadAndExtractRunner(
@@ -17,7 +15,7 @@ export async function downloadAndExtractRunner(
     return downloadAndExtractRelease(GUNGRAUN_REPO, version, assetName, githubToken);
 }
 
-async function downloadAndExtractRelease(
+export async function downloadAndExtractRelease(
     repo: string,
     version: ResolvedVersion,
     assetName: string,
@@ -81,55 +79,4 @@ export async function downloadAndExtractValgrind(
     githubToken: string,
 ): Promise<string> {
     return downloadAndExtractRelease(VALGRIND_BUILDER_REPO, version, assetName, githubToken);
-}
-
-function extractHash(filePath: string, expectedName: string): string | null {
-    const shaContent = fs.readFileSync(filePath, "utf-8").trim();
-    const hash = shaContent
-        .split(/\r?\n/)
-        .map((line) => line.split(/\s+/))
-        .filter((parts) => parts.length >= 2)
-        .find(([, ...nameParts]) => {
-            const name = nameParts.join(" ").replace(/^\*/, "");
-            return name === expectedName || name.endsWith(`/${expectedName}`);
-        })?.[0];
-    return hash?.trim() ?? null;
-}
-
-async function verifySha(
-    variant: 256 | 512 | "auto",
-    archivePath: string,
-    shaFilePath: string,
-): Promise<void> {
-    const expectedName = path.basename(archivePath);
-    const expectedHash = extractHash(shaFilePath, expectedName);
-    if (!expectedHash) {
-        throw new Error(`Could not find SHA-${variant} entry for ${expectedName} in checksum file`);
-    }
-
-    let shaVariant: string;
-    if (variant === "auto") {
-        const detected = detectShaVariant(expectedHash);
-        if (!detected) {
-            throw new Error("Unable to detect sha variant");
-        }
-        shaVariant = detected;
-    } else {
-        shaVariant = "sha" + variant;
-    }
-
-    const actualHash = crypto
-        .createHash(shaVariant)
-        .update(fs.readFileSync(archivePath))
-        .digest("hex");
-
-    if (actualHash !== expectedHash) {
-        throw new Error(
-            `${shaVariant} verification failed for ${expectedName}
-Expected: ${expectedHash}
-Actual:   ${actualHash}`,
-        );
-    }
-
-    printInfo(`SHA-${variant} verified for ${expectedName}`);
 }
