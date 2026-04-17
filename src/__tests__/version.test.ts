@@ -290,7 +290,9 @@ describe("ResolvedVersion from a string", () => {
     it("when latest then throws", () => {
         const spy = jest.spyOn(Version, "fromString");
 
-        expect(() => ResolvedVersion.fromString("latest")).toThrow();
+        expect(() => ResolvedVersion.fromString("latest")).toThrow(
+            "A resolved version cannot be 'latest' or 'auto'",
+        );
         expect(spy).toHaveBeenCalledWith("latest");
         spy.mockRestore();
     });
@@ -298,7 +300,9 @@ describe("ResolvedVersion from a string", () => {
     it("when auto then throws", () => {
         const spy = jest.spyOn(Version, "fromString");
 
-        expect(() => ResolvedVersion.fromString("auto")).toThrow();
+        expect(() => ResolvedVersion.fromString("auto")).toThrow(
+            "A resolved version cannot be 'latest' or 'auto'",
+        );
         expect(spy).toHaveBeenCalledWith("auto");
         spy.mockRestore();
     });

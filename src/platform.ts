@@ -1,5 +1,5 @@
-import * as exec from "@actions/exec";
 import { ResolvedVersion } from "./version";
+import { execSudo, execSudoWithOutput } from "./utils";
 
 export interface PackageManager {
     accept<T>(v: PackageManagerVisitor<T>): T;
@@ -75,8 +75,13 @@ export class Dnf implements PackageManager {
 
     extractVersionStrings(output: string, pkg: string): string[] | null {
         // sample: "valgrind.x86_64   3.17.0-1.fc34   updates"
-        const matches = output.match(new RegExp(`^${pkg}[^\n]*\s+([^\s]+)\s`, "m"));
-        return matches?.map((m) => m![1]) ?? null;
+        const regex = new RegExp(String.raw`^${pkg}[^\s]*\s+([^\s]+).*`, "gm");
+        const matches = [...output.matchAll(regex)];
+
+        if (matches.length === 0) {
+            return null;
+        }
+        return matches.map((m) => m[1]);
     }
 
     getDebugInfoPackages(): string[] {
@@ -150,7 +155,7 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
             .sort((a, b) => a.compare(b));
 
         if (resolvedVersions) {
-            return resolvedVersions[resolvedVersions.length - 1];
+            return resolvedVersions[resolvedVersions.length - 1] ?? null;
         }
 
         return null;
@@ -161,9 +166,10 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
 
         const output = await execSudoWithOutput("apt-cache", "policy", this.pkg);
         // sample: "  Installed: (none)\n  Candidate: 1:3.15.0-1"
-        const matches = output.match("/Candidate:\s*([^\s]+)/");
+        const regex = new RegExp(String.raw`^\s*Candidate:\s*([^\s]+)`, "gm");
+        const matches = [...output.matchAll(regex)];
 
-        return FetchLatestPackageVersion.getLatestVersion(matches?.map((m) => m![1]));
+        return FetchLatestPackageVersion.getLatestVersion(matches.map((m) => m![1]));
     }
 
     async visitApk(pm: Apk) {
@@ -174,9 +180,10 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
         // "valgrind policy:
         //   3.25.1-r2:
         //     https://dl-cdn.alpinelinux.org/alpine/v3.23/main"
-        const matches = output.match(new RegExp(`${this.pkg}\s*policy:\s*([^\s:]+):`));
+        const regex = new RegExp(String.raw`${this.pkg}\s*policy:\s*([^\s:]+):`, "gm");
+        const matches = [...output.matchAll(regex)];
 
-        return FetchLatestPackageVersion.getLatestVersion(matches?.map((m) => m![1]));
+        return FetchLatestPackageVersion.getLatestVersion(matches.map((m) => m![1]));
     }
 
     async visitDnf(pm: Dnf) {
@@ -191,7 +198,8 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
 
         const output = await execSudoWithOutput("pacman", "-Si", this.pkg);
         // sample: "Version         : 3.17.0-1"
-        const matches = output.match("/^Version\s*:\s*([^\s]+)/m");
+        const regex = new RegExp(String.raw`^\s*Version\s*:\s*([^\s]+)`, "gm");
+        const matches = [...output.matchAll(regex)];
 
         return FetchLatestPackageVersion.getLatestVersion(matches?.map((m) => m![1]));
     }
@@ -211,9 +219,10 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
     async visitZypper(_pm: Zypper) {
         const output = await execSudoWithOutput("zypper", "info", this.pkg);
         // sample: "Version   : 3.17.0-1.1"
-        const matches = output.match("/^Version\s*:\s*([^\s]+)/m");
+        const regex = new RegExp(String.raw`^\s*Version\s*:\s*([^\s]+)`, "gm");
+        const matches = [...output.matchAll(regex)];
 
-        return FetchLatestPackageVersion.getLatestVersion(matches?.map((m) => m![1]));
+        return FetchLatestPackageVersion.getLatestVersion(matches.map((m) => m![1]));
     }
 }
 
@@ -267,31 +276,14 @@ export class PackagesInstaller implements PackageManagerVisitor<Promise<void>> {
 
     async visitZypper(_pm: Zypper): Promise<void> {
         if (this.hasPackages()) {
-            try {
-                await execSudoWithOutput(
-                    "zypper",
-                    "--non-interactive",
-                    "--plus-content",
-                    "debug",
-                    "install",
-                    ...this.pkgs,
-                );
-            } catch {
-                return new Dnf().accept(new PackagesInstaller(...this.pkgs));
-            }
+            await execSudoWithOutput(
+                "zypper",
+                "--non-interactive",
+                "--plus-content",
+                "debug",
+                "install",
+                ...this.pkgs,
+            );
         }
     }
-}
-
-export async function execSudoWithOutput(...args: string[]): Promise<string> {
-    const { stdout } = await exec.getExecOutput("sudo", args, {
-        silent: true,
-    });
-    return stdout;
-}
-
-export async function execSudo(...args: string[]): Promise<void> {
-    await exec.exec("sudo", args, {
-        silent: true,
-    });
 }

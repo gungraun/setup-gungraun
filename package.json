@@ -1,26 +1,27 @@
 {
-  "name": "gungraun-action",
-  "version": "0.1.0",
-  "description": "GitHub Action to install gungraun-runner and valgrind",
-  "main": "dist/index.js",
-  "scripts": {
-    "build": "ncc build src/main.ts -o dist --source-map",
-    "check": "tsc --noEmit",
-    "test": "jest"
-  },
-  "dependencies": {
-    "@actions/core": "^1.10.1",
-    "@actions/exec": "^1.1.1",
-    "@actions/github": "^6.0.0",
-    "@actions/io": "^1.1.3",
-    "@actions/tool-cache": "^2.0.1"
-  },
-  "devDependencies": {
-    "@types/jest": "^30.0.0",
-    "@types/node": "^20.11.0",
-    "@vercel/ncc": "^0.38.3",
-    "jest": "^30.3.0",
-    "ts-jest": "^29.4.9",
-    "typescript": "^5.3.3"
-  }
+    "name": "gungraun-action",
+    "version": "0.1.0",
+    "description": "GitHub Action to install gungraun-runner and valgrind",
+    "main": "dist/index.js",
+    "scripts": {
+        "build": "ncc build src/main.ts -o dist --source-map",
+        "check": "tsc --noEmit",
+        "test": "jest",
+        "test:coverage": "jest --coverage"
+    },
+    "dependencies": {
+        "@actions/core": "^1.10.1",
+        "@actions/exec": "^1.1.1",
+        "@actions/github": "^6.0.0",
+        "@actions/io": "^1.1.3",
+        "@actions/tool-cache": "^2.0.1"
+    },
+    "devDependencies": {
+        "@types/jest": "^30.0.0",
+        "@types/node": "^20.11.0",
+        "@vercel/ncc": "^0.38.3",
+        "jest": "^30.3.0",
+        "ts-jest": "^29.4.9",
+        "typescript": "^5.3.3"
+    }
 }

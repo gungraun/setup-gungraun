@@ -11,11 +11,39 @@ export const VALGRIND_BUILDER_REPO = "gungraun/valgrind-builder";
 
 export const VALGRIND_SOURCE_REPO = "https://sourceware.org/git/valgrind.git";
 
-/**
- * Ends the current log group.
- */
-export function endGroup(): void {
-    core.endGroup();
+/** Marks the action as failed and exits the process. Never returns. */
+export function bail(message: string): never {
+    core.setFailed(message);
+    process.exit(1);
+}
+
+/** Escapes special regex characters in a string. */
+export function escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export async function execSudoWithOutput(...args: string[]): Promise<string> {
+    const { stdout } = await exec.getExecOutput("sudo", args, {
+        silent: true,
+    });
+    return stdout;
+}
+
+export async function execSudo(...args: string[]): Promise<void> {
+    await exec.exec("sudo", args, {
+        silent: true,
+    });
+}
+
+export async function findBinary(dir: string, name: string): Promise<string | null> {
+    const entries = fs.readdirSync(dir, { withFileTypes: true, recursive: true });
+    for (const entry of entries) {
+        if (entry.isFile() && entry.name === name) {
+            // entry.parentPath is supported by node versions from 20 upwards
+            return path.join(entry.parentPath, entry.name);
+        }
+    }
+    return null;
 }
 
 /** Returns the cargo binary path, respecting the CARGO environment variable. */
@@ -33,29 +61,7 @@ export async function logInstalledVersion(
         silent: true,
         ignoreReturnCode: true,
     });
-    core.info(`${label} installed: ${stdout.trim() || fallback || "version unknown"}`);
-}
-
-/** Marks the action as failed and exits the process. Never returns. */
-export function bail(message: string): never {
-    core.setFailed(message);
-    process.exit(1);
-}
-
-/** Escapes special regex characters in a string. */
-export function escapeRegex(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-export async function findBinary(dir: string, name: string): Promise<string | null> {
-    const entries = fs.readdirSync(dir, { withFileTypes: true, recursive: true });
-    for (const entry of entries) {
-        if (entry.isFile() && entry.name === name) {
-            // entry.parentPath is supported by node versions from 20 upwards
-            return path.join(entry.parentPath, entry.name);
-        }
-    }
-    return null;
+    printInfo(`${label} installed: ${stdout.trim() || fallback || "version unknown"}`);
 }
 
 /** Logs a error message. */
@@ -73,17 +79,12 @@ export function printWarning(message: string): void {
     core.warning(message);
 }
 
-/** Starts a new log group. */
-export function startGroup(name: string): void {
-    core.startGroup(name);
-}
-
 /** Runs an async function within a named log group, ensuring the group is closed. */
 export async function withGroup<T>(name: string, fn: () => Promise<T>): Promise<T> {
-    startGroup(name);
+    core.startGroup(name);
     try {
         return await fn();
     } finally {
-        endGroup();
+        core.endGroup();
     }
 }

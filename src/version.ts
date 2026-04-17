@@ -22,9 +22,9 @@ export class Version {
         const lower = str.trim().toLowerCase();
 
         if (lower === "latest") {
-            return this.latest();
+            return Version.latest();
         } else if (lower === "auto") {
-            return this.auto();
+            return Version.auto();
         }
 
         const match = lower.match(/[v]?(\d+)\.(\d+)\.(\d+)/);
@@ -107,7 +107,7 @@ export class ResolvedVersion extends Version {
 
     static fromString(str: string): ResolvedVersion {
         let version = super.fromString(str);
-        if (version.isLatest() || version.isAuto()) {
+        if (version.isAutoOrLatest()) {
             throw new Error("A resolved version cannot be 'latest' or 'auto'");
         }
 
