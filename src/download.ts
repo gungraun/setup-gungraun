@@ -1,7 +1,7 @@
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as tc from "@actions/tool-cache";
-import { getReleaseAssets } from "./resolve";
+import { fetchReleaseAssetData } from "./resolve";
 import { GUNGRAUN_REPO, VALGRIND_BUILDER_REPO, printInfo } from "./utils";
 import { ResolvedVersion } from "./version";
 import path from "path";
@@ -23,7 +23,7 @@ async function downloadAndExtractRelease(
     assetName: string,
     githubToken: string,
 ): Promise<string> {
-    const release = await getReleaseAssets(repo, version, githubToken);
+    const release = await fetchReleaseAssetData(repo, version, githubToken);
 
     const archiveAsset = release.assets.find((a) => a.name === assetName);
     const shaAsset = release.assets.find((a) => a.name === `${assetName}.sha256`);

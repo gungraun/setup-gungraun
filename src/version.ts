@@ -4,6 +4,14 @@ export class Version {
     readonly patch: number;
 
     constructor(major: number, minor: number, patch: number) {
+        if (
+            !Number.isSafeInteger(major) ||
+            !Number.isSafeInteger(minor) ||
+            !Number.isSafeInteger(patch)
+        ) {
+            throw new Error("A version cannot be represented by an unsafe number");
+        }
+
         this.major = major;
         this.minor = minor;
         this.patch = patch;
@@ -12,7 +20,7 @@ export class Version {
     static fromValgrindTag(tag: string): Version {
         const match = tag.match(/VALGRIND_(\d+)_(\d+)_(\d+)/);
         if (match) {
-            return new Version(+match[1], +match[2], +match[3]);
+            return new Version(Number(match[1]), Number(match[2]), Number(match[3]));
         }
 
         throw new Error(`Invalid valgrind version tag: ${tag}`);
@@ -29,7 +37,7 @@ export class Version {
 
         const match = lower.match(/[v]?(\d+)\.(\d+)\.(\d+)/);
         if (match) {
-            return new Version(+match[1], +match[2], +match[3]);
+            return new Version(Number(match[1]), Number(match[2]), Number(match[3]));
         }
 
         throw new Error(`Invalid version string: ${str}`);

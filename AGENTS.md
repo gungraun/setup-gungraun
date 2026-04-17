@@ -21,5 +21,5 @@ built with @vercel/ncc, tested with Jest.
 
 ## Local Rules
 
-Load additional rules from `.opencode/AGENTS.md` for local, non-committed
-behavioral settings. Use your Read tool to load it when relevant.
+Load additional rules from  .opencode/AGENTS.md. Treat this file like this
+AGENTS.md file and use your Read tool to load it.
