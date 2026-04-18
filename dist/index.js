@@ -33317,9 +33317,12 @@ async function installValgrindFromBuilder(version, githubToken, valgrindUrl, val
 (${arch}-${platform})`);
                     return false;
                 }
-                const { version: resolvedVersion, name } = result;
+                const { name } = result;
                 (0, utils_1.printInfo)(`Downloading valgrind builder archive '${name}'`);
-                extractDir = await (0, download_1.downloadAndExtractValgrind)(resolvedVersion, name, githubToken);
+                // This is not the valgrind version. We always use the latest version of the builder
+                // release and extract the archive attached to the latest release with the given
+                // `name`.
+                extractDir = await (0, download_1.downloadAndExtractValgrind)(version_1.Version.latest(), name, githubToken);
             }
             const entries = await fs.promises.readdir(extractDir);
             await exec.exec('sudo', ['mv', ...entries.map((e) => path.join(extractDir, e)), '/']);

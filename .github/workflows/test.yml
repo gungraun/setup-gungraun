@@ -104,26 +104,49 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # conditional to say that the action fails
         include:
           - valgrind-strategy: builder
             install-build-deps: false
+            valgrind-version: latest
+          - valgrind-strategy: builder
+            install-build-deps: false
+            valgrind-version: auto
           - valgrind-strategy: system
             install-build-deps: false
-          - valgrind-strategy: source
+            valgrind-version: auto
+          # This tests that the latest system valgrind version is installed. The
+          # valgrind-version input is computed dynamically in the
+          # set_valgrind_version step
+          - valgrind-strategy: system
             install-build-deps: false
+            valgrind-version: ''
           - valgrind-strategy: source
             install-build-deps: true
-
+            valgrind-version: latest
+          - valgrind-strategy: source
+            install-build-deps: true
+            valgrind-version: auto
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Detect and set valgrind version
+        id: set_valgrind_version
+        run: |
+          if [[ "${{ matrix.valgrind-strategy }}" == "system" && -z "${{ matrix.valgrind-version }}" ]]; then
+            valgrind_version=$(./scripts/system-valgrind-version.sh)
+            echo "version=${valgrind_version}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ matrix.valgrind-version }}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Run action
         uses: ./
         with:
           runner-strategy: none
-          runner-version: latest
           valgrind-strategy: ${{ matrix.valgrind-strategy }}
+          valgrind-version: ${{ steps.set_valgrind_version.outputs.version }}
           install-build-deps: ${{ matrix.install-build-deps }}
           github-token: ${{ github.token }}
 
