@@ -9,7 +9,7 @@ RUN apt-get update -qq \
 RUN useradd -m -s /bin/bash docker \
     && echo 'docker ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/docker
 
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y -qq nodejs \
     && rm -rf /var/lib/apt/lists/*
 

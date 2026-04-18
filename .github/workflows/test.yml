@@ -1,1 +1,130 @@
-# TODO: STOPPED HERE
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group:
+    ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  format-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: npm ci
+      - run: npm run check
+      - run: npm run lint
+      - run: npm run format:check
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: npm ci
+      - run: npm run build
+      - run: git diff --exit-code dist/
+
+  test-runner:
+    needs: [format-and-lint, build]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner-strategy: binstall
+            runner-version: '0.18.0'
+            setup-binstall: true
+            setup-fake-project: false
+          - runner-strategy: release
+            runner-version: '0.18.0'
+            setup-binstall: false
+            setup-fake-project: false
+          - runner-strategy: source
+            runner-version: '0.18.0'
+            setup-binstall: false
+            setup-fake-project: false
+          - runner-strategy: release
+            runner-version: latest
+            setup-binstall: false
+            setup-fake-project: false
+          - runner-strategy: release
+            runner-version: auto
+            setup-binstall: false
+            setup-fake-project: true
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-binstall
+        if: matrix.setup-binstall
+
+      - name: Create fake Rust project for auto detection
+        if: matrix.setup-fake-project
+        run: |
+          cat > Cargo.toml << 'TOML'
+          [package]
+          name = "fake-project"
+          version = "0.1.0"
+          edition = "2021"
+
+          [dependencies]
+          gungraun = "0.18.0"
+          TOML
+          mkdir -p src
+          echo "" > src/lib.rs
+          cargo generate-lockfile
+
+      - name: Run action
+        uses: ./
+        with:
+          runner-strategy: ${{ matrix.runner-strategy }}
+          runner-version: ${{ matrix.runner-version }}
+          valgrind-strategy: none
+          github-token: ${{ github.token }}
+
+      - name: Verify gungraun-runner
+        run: gungraun-runner --version
+
+  test-valgrind:
+    needs: [format-and-lint, build]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - valgrind-strategy: builder
+            install-build-deps: false
+          - valgrind-strategy: system
+            install-build-deps: false
+          - valgrind-strategy: source
+            install-build-deps: false
+          - valgrind-strategy: source
+            install-build-deps: true
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run action
+        uses: ./
+        with:
+          runner-strategy: none
+          runner-version: latest
+          valgrind-strategy: ${{ matrix.valgrind-strategy }}
+          install-build-deps: ${{ matrix.install-build-deps }}
+          github-token: ${{ github.token }}
+
+      - name: Verify valgrind
+        run: valgrind --version

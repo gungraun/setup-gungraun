@@ -6,6 +6,7 @@ binstall
 cooldown
 debuginfo
 debuginfod
+dtolnay
 endgroup
 expectedhash
 fakeDirents
@@ -23,3 +24,4 @@ pkgid
 rustc
 showduplicates
 sourceware
+taiki
