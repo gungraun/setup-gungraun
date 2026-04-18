@@ -1,18 +1,24 @@
 {
+  "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
     "alwaysStrict": true,
-    "declaration": true,
-    "declarationMap": true,
+    "declaration": false,
+    "declarationMap": false,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "lib": ["ES2022"],
     "module": "commonjs",
+    "moduleResolution": "node",
+    "newLine": "lf",
     "noImplicitAny": true,
-    "noImplicitThis": true,
     "noImplicitReturns": true,
+    "noImplicitThis": true,
     "noUnusedLocals": true,
-    "outDir": "./lib",
+    "noUnusedParameters": false,
+    "outDir": "./dist",
+    "pretty": true,
     "resolveJsonModule": true,
     "rootDir": "./src",
     "skipLibCheck": true,
@@ -25,5 +31,5 @@
     "target": "ES2022"
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["coverage", "dist", "node_modules"]
 }
