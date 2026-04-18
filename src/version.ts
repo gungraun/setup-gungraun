@@ -9,7 +9,7 @@ export class Version {
             !Number.isSafeInteger(minor) ||
             !Number.isSafeInteger(patch)
         ) {
-            throw new Error("A version cannot be represented by an unsafe number");
+            throw new Error('A version cannot be represented by an unsafe number');
         }
 
         this.major = major;
@@ -29,9 +29,9 @@ export class Version {
     static fromString(str: string): Version {
         const lower = str.trim().toLowerCase();
 
-        if (lower === "latest") {
+        if (lower === 'latest') {
             return Version.latest();
-        } else if (lower === "auto") {
+        } else if (lower === 'auto') {
             return Version.auto();
         }
 
@@ -84,9 +84,9 @@ export class Version {
 
     toString(): string {
         if (this.isLatest()) {
-            return "latest";
+            return 'latest';
         } else if (this.isAuto()) {
-            return "auto";
+            return 'auto';
         }
 
         return `${this.major}.${this.minor}.${this.patch}`;
@@ -94,9 +94,9 @@ export class Version {
 
     withPrefix(): string {
         if (this.isLatest()) {
-            return "latest";
+            return 'latest';
         } else if (this.isAuto()) {
-            return "auto";
+            return 'auto';
         }
 
         return `v${this.toString()}`;

@@ -1,7 +1,7 @@
-import * as exec from "@actions/exec";
-import { getOctokit } from "@actions/github";
-import { escapeRegex, GUNGRAUN_REPO, VALGRIND_BUILDER_REPO, VALGRIND_SOURCE_REPO } from "./utils";
-import { ResolvedVersion, Version } from "./version";
+import * as exec from '@actions/exec';
+import { getOctokit } from '@actions/github';
+import { escapeRegex, GUNGRAUN_REPO, VALGRIND_BUILDER_REPO, VALGRIND_SOURCE_REPO } from './utils';
+import { ResolvedVersion, Version } from './version';
 
 interface ReleaseAsset {
     name: string;
@@ -17,10 +17,10 @@ interface ReleaseInfo {
 export async function fetchReleaseAssetData(
     repo: string,
     version: Version,
-    githubToken: string,
+    githubToken: string
 ): Promise<ReleaseInfo> {
     const octokit = getOctokit(githubToken);
-    const [owner, repoName] = repo.split("/");
+    const [owner, repoName] = repo.split('/');
 
     let release: {
         data: { tag_name: string; assets: { name: string; browser_download_url: string }[] };
@@ -28,13 +28,13 @@ export async function fetchReleaseAssetData(
     if (version.isLatest()) {
         release = await octokit.rest.repos.getLatestRelease({
             owner,
-            repo: repoName,
+            repo: repoName
         });
     } else {
         release = await octokit.rest.repos.getReleaseByTag({
             owner,
             repo: repoName,
-            tag: version.withPrefix(),
+            tag: version.withPrefix()
         });
     }
 
@@ -42,18 +42,18 @@ export async function fetchReleaseAssetData(
         tagName: release.data.tag_name,
         assets: release.data.assets.map((a) => ({
             name: a.name,
-            browserDownloadUrl: a.browser_download_url,
-        })),
+            browserDownloadUrl: a.browser_download_url
+        }))
     };
 }
 
 export async function fetchRunnerVersions(githubToken: string): Promise<ResolvedVersion[]> {
     try {
         const octokit = getOctokit(githubToken);
-        const [owner, repoName] = GUNGRAUN_REPO.split("/");
+        const [owner, repoName] = GUNGRAUN_REPO.split('/');
         const { data } = await octokit.rest.repos.listReleases({
             owner,
-            repo: repoName,
+            repo: repoName
         });
         return data.map((d) => ResolvedVersion.fromString(d.tag_name));
     } catch (error) {
@@ -63,22 +63,22 @@ export async function fetchRunnerVersions(githubToken: string): Promise<Resolved
 
 export async function fetchSortedValgrindVersions(): Promise<ResolvedVersion[]> {
     const { stdout } = await exec.getExecOutput(
-        "git",
-        ["ls-remote", "--tags", VALGRIND_SOURCE_REPO],
+        'git',
+        ['ls-remote', '--tags', VALGRIND_SOURCE_REPO],
         {
-            silent: true,
-        },
+            silent: true
+        }
     );
 
     const versions = stdout
         .trim()
-        .split("\n")
-        .filter((l) => !l.includes("^{}"))
+        .split('\n')
+        .filter((l) => !l.includes('^{}'))
         .map((l) => ResolvedVersion.fromValgrindTag(l))
         .sort((a, b) => a.compare(b));
 
     if (versions.length === 0) {
-        throw new Error("Could not determine latest valgrind version from sourceware.org");
+        throw new Error('Could not determine latest valgrind version from sourceware.org');
     }
 
     return versions;
@@ -87,15 +87,15 @@ export async function fetchSortedValgrindVersions(): Promise<ResolvedVersion[]> 
 async function resolveLatestTag(
     repo: string,
     notFoundMessage: string,
-    githubToken: string,
+    githubToken: string
 ): Promise<ResolvedVersion> {
     let tag: string;
     try {
         const octokit = getOctokit(githubToken);
-        const [owner, repoName] = repo.split("/");
+        const [owner, repoName] = repo.split('/');
         const { data } = await octokit.rest.repos.getLatestRelease({
             owner,
-            repo: repoName,
+            repo: repoName
         });
         tag = data.tag_name;
     } catch (error) {
@@ -108,7 +108,7 @@ async function resolveLatestTag(
 /** Resolves a gungraun-runner version tag, fetching "latest" from GitHub if needed. */
 export async function resolveRunnerVersion(
     version: Version,
-    githubToken: string,
+    githubToken: string
 ): Promise<ResolvedVersion> {
     if (!version.isAutoOrLatest()) {
         return version;
@@ -116,8 +116,8 @@ export async function resolveRunnerVersion(
 
     return await resolveLatestTag(
         GUNGRAUN_REPO,
-        "Could not determine latest release version for gungraun-runner",
-        githubToken,
+        'Could not determine latest release version for gungraun-runner',
+        githubToken
     );
 }
 
@@ -126,20 +126,20 @@ export async function resolveValgrindBuilderAssetName(
     version: Version,
     arch: string,
     platform: string,
-    githubToken: string,
+    githubToken: string
 ): Promise<{ version: ResolvedVersion; name: string } | null> {
     // This is not the version of valgrind but the version of valgrind-builder and we always want
     // the assets from the latest valgrind-builder release.
     const release = await fetchReleaseAssetData(
         VALGRIND_BUILDER_REPO,
         Version.latest(),
-        githubToken,
+        githubToken
     );
 
     // Example: valgrind-3.19.0-x86_64-ubuntu-22.04.tar.gz
     if (version.isAutoOrLatest()) {
         const pattern = new RegExp(
-            String.raw`^valgrind-(\d+)\.(\d+)\.(\d+)-${escapeRegex(arch)}-${escapeRegex(platform)}\.tar\.gz$`,
+            String.raw`^valgrind-(\d+)\.(\d+)\.(\d+)-${escapeRegex(arch)}-${escapeRegex(platform)}\.tar\.gz$`
         );
 
         const sorted = release.assets
@@ -149,13 +149,13 @@ export async function resolveValgrindBuilderAssetName(
                 const resolvedVersion = new ResolvedVersion(
                     Number(m[1]),
                     Number(m[2]),
-                    Number(m[3]),
+                    Number(m[3])
                 );
                 const name = m[0];
 
                 return {
                     version: resolvedVersion,
-                    name,
+                    name
                 };
             })
             .sort((a, b) => {
@@ -171,7 +171,7 @@ export async function resolveValgrindBuilderAssetName(
         } else {
             return {
                 version: ResolvedVersion.fromVersion(version),
-                name: match.name,
+                name: match.name
             };
         }
     }

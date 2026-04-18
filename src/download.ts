@@ -1,15 +1,15 @@
-import * as tc from "@actions/tool-cache";
-import { fetchReleaseAssetData } from "./resolve";
-import { GUNGRAUN_REPO, VALGRIND_BUILDER_REPO } from "./utils";
-import { ResolvedVersion } from "./version";
-import path from "path";
-import { verifySha } from "./hash";
+import * as tc from '@actions/tool-cache';
+import { fetchReleaseAssetData } from './resolve';
+import { GUNGRAUN_REPO, VALGRIND_BUILDER_REPO } from './utils';
+import { ResolvedVersion } from './version';
+import path from 'path';
+import { verifySha } from './hash';
 
 /** Downloads and extracts the gungraun-runner release archive for a given tag and target. */
 export async function downloadAndExtractRunner(
     version: ResolvedVersion,
     target: string,
-    githubToken: string,
+    githubToken: string
 ): Promise<string> {
     const assetName = `gungraun-runner-${version.withPrefix()}-${target}.tar.gz`;
     return downloadAndExtractRelease(GUNGRAUN_REPO, version, assetName, githubToken);
@@ -19,7 +19,7 @@ export async function downloadAndExtractRelease(
     repo: string,
     version: ResolvedVersion,
     assetName: string,
-    githubToken: string,
+    githubToken: string
 ): Promise<string> {
     const release = await fetchReleaseAssetData(repo, version, githubToken);
 
@@ -43,14 +43,14 @@ export async function downloadAndExtractRelease(
 
 export async function downloadAndExtractValgrindUrl(
     valgrindUrl: string,
-    valgrindShaUrl: string,
+    valgrindShaUrl: string
 ): Promise<{ extractDir: string; name: string }> {
     const archivePath = await tc.downloadTool(valgrindUrl);
     const name = path.basename(archivePath);
 
     if (valgrindShaUrl) {
         const shaPath = await tc.downloadTool(valgrindShaUrl);
-        await verifySha("auto", archivePath, shaPath);
+        await verifySha('auto', archivePath, shaPath);
     }
 
     const extractDir = await tc.extractTar(archivePath);
@@ -68,7 +68,7 @@ export async function downloadAndExtractValgrindSource(version: ResolvedVersion)
 
     await verifySha(512, archivePath, shaAsset);
 
-    const extractDir = await tc.extractTar(archivePath, undefined, "xj");
+    const extractDir = await tc.extractTar(archivePath, undefined, 'xj');
     return extractDir;
 }
 
@@ -76,7 +76,7 @@ export async function downloadAndExtractValgrindSource(version: ResolvedVersion)
 export async function downloadAndExtractValgrind(
     version: ResolvedVersion,
     assetName: string,
-    githubToken: string,
+    githubToken: string
 ): Promise<string> {
     return downloadAndExtractRelease(VALGRIND_BUILDER_REPO, version, assetName, githubToken);
 }

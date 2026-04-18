@@ -1,15 +1,15 @@
-import * as core from "@actions/core";
-import * as exec from "@actions/exec";
-import * as fs from "fs";
-import * as path from "path";
+import * as core from '@actions/core';
+import * as exec from '@actions/exec';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /** GitHub repository for gungraun-runner releases. */
-export const GUNGRAUN_REPO = "gungraun/gungraun";
+export const GUNGRAUN_REPO = 'gungraun/gungraun';
 
 /** GitHub repository for valgrind-builder releases. */
-export const VALGRIND_BUILDER_REPO = "gungraun/valgrind-builder";
+export const VALGRIND_BUILDER_REPO = 'gungraun/valgrind-builder';
 
-export const VALGRIND_SOURCE_REPO = "https://sourceware.org/git/valgrind.git";
+export const VALGRIND_SOURCE_REPO = 'https://sourceware.org/git/valgrind.git';
 
 /** Marks the action as failed and exits the process. Never returns. */
 export function bail(message: string): never {
@@ -19,19 +19,19 @@ export function bail(message: string): never {
 
 /** Escapes special regex characters in a string. */
 export function escapeRegex(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export async function execSudoWithOutput(...args: string[]): Promise<string> {
-    const { stdout } = await exec.getExecOutput("sudo", args, {
-        silent: true,
+    const { stdout } = await exec.getExecOutput('sudo', args, {
+        silent: true
     });
     return stdout;
 }
 
 export async function execSudo(...args: string[]): Promise<void> {
-    await exec.exec("sudo", args, {
-        silent: true,
+    await exec.exec('sudo', args, {
+        silent: true
     });
 }
 
@@ -48,28 +48,28 @@ export async function findBinary(dir: string, name: string): Promise<string | nu
 
 /** Returns the cargo binary path, respecting the CARGO environment variable. */
 export function getCargoBin(): string {
-    return process.env.CARGO || "cargo";
+    return process.env.CARGO || 'cargo';
 }
 
 /** Logs the installed version of a binary, or a fallback string if unavailable. */
 export async function logInstalledVersion(
     binary: string,
     label: string,
-    fallback?: string,
+    fallback?: string
 ): Promise<void> {
-    const { stdout } = await exec.getExecOutput(binary, ["--version"], {
+    const { stdout } = await exec.getExecOutput(binary, ['--version'], {
         silent: true,
-        ignoreReturnCode: true,
+        ignoreReturnCode: true
     });
-    printInfo(`${label} installed: ${stdout.trim() || fallback || "version unknown"}`);
+    printInfo(`${label} installed: ${stdout.trim() || fallback || 'version unknown'}`);
 }
 
 export function normalizePath(path: string): string {
     const trimmed = path.trim();
     if (trimmed.length > 2) {
-        return trimmed.startsWith("./") ? trimmed.slice(2) : trimmed;
+        return trimmed.startsWith('./') ? trimmed.slice(2) : trimmed;
     } else {
-        return trimmed.startsWith("./") ? "." : trimmed;
+        return trimmed.startsWith('./') ? '.' : trimmed;
     }
 }
 
@@ -90,7 +90,7 @@ export function printWarning(message: string): void {
 
 export function splitOnce(str: string, sep: string): [string, string] {
     const i = str.indexOf(sep);
-    if (i === -1) return [str, ""];
+    if (i === -1) return [str, ''];
     return [str.slice(0, i), str.slice(i + sep.length)];
 }
 

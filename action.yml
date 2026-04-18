@@ -6,42 +6,56 @@ branding:
 
 inputs:
   github-token:
-    description: "GitHub token for API requests (avoids rate limits on release downloads)"
+    description:
+      'GitHub token for API requests (avoids rate limits on release downloads)'
     required: false
-    default: ""
+    default: ''
   install-build-deps:
-    description: "Install build dependencies before building valgrind from source"
+    description:
+      'Install build dependencies before building valgrind from source'
     required: false
-    default: "false"
+    default: 'false'
   runner-strategy:
-    description: "Ordered comma-separated list of runner install strategies to try. Valid values: binstall, release, source, none"
+    description:
+      'Ordered comma-separated list of runner install strategies to try. Valid
+      values: binstall, release, source, none'
     required: false
-    default: "binstall,release,source"
+    default: 'binstall,release,source'
   runner-target:
-    description: "Rust target triple (e.g. x86_64-unknown-linux-gnu). Auto-detected from rustc if omitted."
+    description:
+      'Rust target triple (e.g. x86_64-unknown-linux-gnu). Auto-detected from
+      rustc if omitted.'
     required: false
-    default: ""
+    default: ''
   runner-version:
-    description: "Version of gungraun-runner to install (e.g. v0.1.0, latest, auto)"
+    description:
+      'Version of gungraun-runner to install (e.g. v0.1.0, latest, auto)'
     required: false
-    default: "auto"
+    default: 'auto'
   valgrind-sha-url:
-    description: "The url to the sha sum used to verify the tar archive for valgrind-url"
+    description:
+      'The url to the sha sum used to verify the tar archive for valgrind-url'
     required: false
-    default: ""
+    default: ''
   valgrind-strategy:
-    description: "Ordered comma-separated list of valgrind install strategies to try. Valid values: builder, system, source, none"
+    description:
+      'Ordered comma-separated list of valgrind install strategies to try. Valid
+      values: builder, system, source, none'
     required: false
-    default: "builder,system,source"
+    default: 'builder,system,source'
   valgrind-url:
-    description: "The url to the tar archive containing the valgrind build for the valgrind-strategy: builder"
+    description:
+      'The url to the tar archive containing the valgrind build for the
+      valgrind-strategy: builder'
     required: false
-    default: ""
+    default: ''
   valgrind-version:
-    description: "Valgrind release tag (e.g. v0.1.1, latest) or auto which installs the the latest possible version for the strategy"
+    description:
+      'Valgrind release tag (e.g. v0.1.1, latest) or auto which installs the the
+      latest possible version for the strategy'
     required: false
-    default: "latest"
+    default: 'latest'
 
 runs:
-  using: "node20"
-  main: "dist/index.js"
+  using: 'node20'
+  main: 'dist/index.js'

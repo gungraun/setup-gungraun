@@ -1,18 +1,18 @@
-import * as core from "@actions/core";
-import * as exec from "@actions/exec";
-import * as io from "@actions/io";
-import { installRunner, installValgrind } from "./install";
-import { getCargoBin, bail, printInfo } from "./utils";
-import { Inputs, parseInputs } from "./inputs";
+import * as core from '@actions/core';
+import * as exec from '@actions/exec';
+import * as io from '@actions/io';
+import { installRunner, installValgrind } from './install';
+import { getCargoBin, bail, printInfo } from './utils';
+import { Inputs, parseInputs } from './inputs';
 
 /** Main entry point: validates environment, detects versions, and installs gungraun-runner and valgrind. */
 async function run(): Promise<void> {
-    if (process.platform !== "linux") {
-        bail("This action only supports Linux runners");
+    if (process.platform !== 'linux') {
+        bail('This action only supports Linux runners');
     }
 
     if (!(await io.which(getCargoBin(), false))) {
-        bail("cargo is not installed. This action requires Rust/Cargo.");
+        bail('cargo is not installed. This action requires Rust/Cargo.');
     }
 
     let inputs: Inputs;
@@ -31,15 +31,15 @@ async function run(): Promise<void> {
         valgrindStrategies,
         valgrindUrl,
         valgrindShaUrl,
-        valgrindVersion,
+        valgrindVersion
     } = inputs;
 
-    const valgrindPath = await io.which("valgrind", false);
+    const valgrindPath = await io.which('valgrind', false);
     if (valgrindPath) {
         try {
-            const { stdout } = await exec.getExecOutput("valgrind", ["--version"], {
+            const { stdout } = await exec.getExecOutput('valgrind', ['--version'], {
                 silent: true,
-                ignoreReturnCode: true,
+                ignoreReturnCode: true
             });
             printInfo(`Valgrind already installed: ${stdout.trim()} (${valgrindPath})`);
         } catch (error) {
@@ -53,7 +53,7 @@ async function run(): Promise<void> {
                 installBuildDeps,
                 githubToken,
                 valgrindUrl,
-                valgrindShaUrl,
+                valgrindShaUrl
             );
         } catch (error) {
             bail(`Error installing valgrind: ${(error as Error).message}`);

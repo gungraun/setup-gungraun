@@ -3,10 +3,12 @@
 # This file only sets Prettier-specific options not supported by EditorConfig
 # See: https://prettier.io/docs/en/configuration
 
-# source: https://github.com/actions/typescript-action/blob/main/.prettierrc.yml
-semi = false
+# partly from
+# https://github.com/actions/typescript-action/blob/main/.prettierrc.yml
+
+semi = true
 singleQuote = true
-quoteProps = "as-needed"
+quoteProps = "consistent"
 jsxSingleQuote = false
 trailingComma = "none"
 bracketSpacing = true

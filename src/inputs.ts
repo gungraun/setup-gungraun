@@ -1,25 +1,25 @@
-import * as core from "@actions/core";
-import { ResolvedVersion, Version } from "./version";
-import { detectProjectVersion, detectTarget } from "./detect";
-import { fetchRunnerVersions, fetchSortedValgrindVersions } from "./resolve";
+import * as core from '@actions/core';
+import { ResolvedVersion, Version } from './version';
+import { detectProjectVersion, detectTarget } from './detect';
+import { fetchRunnerVersions, fetchSortedValgrindVersions } from './resolve';
 
-export type ValgrindStrategy = "builder" | "system" | "source" | "none";
-export type RunnerStrategy = "binstall" | "release" | "source" | "none";
+export type ValgrindStrategy = 'builder' | 'system' | 'source' | 'none';
+export type RunnerStrategy = 'binstall' | 'release' | 'source' | 'none';
 
 export const VALID_VALGRIND_STRATEGIES: readonly ValgrindStrategy[] = [
-    "builder",
-    "none",
-    "source",
-    "system",
+    'builder',
+    'none',
+    'source',
+    'system'
 ];
 export const VALID_RUNNER_STRATEGIES: readonly RunnerStrategy[] = [
-    "binstall",
-    "none",
-    "release",
-    "source",
+    'binstall',
+    'none',
+    'release',
+    'source'
 ];
-export const DEFAULT_VALGRIND_STRATEGY: string = "builder,system,source";
-export const DEFAULT_RUNNER_STRATEGY: string = "binstall,release,source";
+export const DEFAULT_VALGRIND_STRATEGY: string = 'builder,system,source';
+export const DEFAULT_RUNNER_STRATEGY: string = 'binstall,release,source';
 
 export interface Inputs {
     installBuildDeps: boolean;
@@ -34,7 +34,7 @@ export interface Inputs {
 }
 
 export async function parseGithubToken(): Promise<string> {
-    return core.getInput("github-token") || process.env.GITHUB_TOKEN?.trim() || "";
+    return core.getInput('github-token') || process.env.GITHUB_TOKEN?.trim() || '';
 }
 
 export async function parseInputs(): Promise<Inputs> {
@@ -57,20 +57,20 @@ export async function parseInputs(): Promise<Inputs> {
         valgrindStrategies,
         valgrindUrl,
         valgrindShaUrl,
-        valgrindVersion,
+        valgrindVersion
     };
 }
 
 export async function parseRunnerTarget(): Promise<string> {
-    return core.getInput("runner-target") || (await detectTarget());
+    return core.getInput('runner-target') || (await detectTarget());
 }
 
 export async function parseRunnerStrategies(): Promise<RunnerStrategy[]> {
     try {
         return parseStrategies<RunnerStrategy>(
-            core.getInput("runner-strategy") || DEFAULT_RUNNER_STRATEGY,
+            core.getInput('runner-strategy') || DEFAULT_RUNNER_STRATEGY,
             VALID_RUNNER_STRATEGIES,
-            "runner",
+            'runner'
         );
     } catch (error) {
         throw new Error(`Invalid runner-strategy: ${(error as Error).message}`);
@@ -78,15 +78,15 @@ export async function parseRunnerStrategies(): Promise<RunnerStrategy[]> {
 }
 
 export async function parseRunnerVersion(githubToken: string): Promise<Version> {
-    let runnerVersionInput = core.getInput("runner-version") || "auto";
+    let runnerVersionInput = core.getInput('runner-version') || 'auto';
     let runnerVersion: Version;
 
-    if (runnerVersionInput.toLowerCase() === "auto") {
+    if (runnerVersionInput.toLowerCase() === 'auto') {
         try {
             runnerVersion = await detectProjectVersion();
         } catch (error) {
             throw new Error(
-                `Unable to detect gungraun-runner version: ${(error as Error).message}`,
+                `Unable to detect gungraun-runner version: ${(error as Error).message}`
             );
         }
     } else {
@@ -96,7 +96,7 @@ export async function parseRunnerVersion(githubToken: string): Promise<Version> 
             runnerVersion = Version.fromString(runnerVersionInput);
         } catch (error) {
             throw new Error(
-                `Failed to fetch gungraun-runner versions: ${(error as Error).message}`,
+                `Failed to fetch gungraun-runner versions: ${(error as Error).message}`
             );
         }
 
@@ -106,7 +106,7 @@ export async function parseRunnerVersion(githubToken: string): Promise<Version> 
         ) {
             throw new Error(
                 `Invalid runner-version ${runnerVersionInput}: Valid versions are:
-${validVersions.join(", ")}`,
+${validVersions.join(', ')}`
             );
         }
     }
@@ -117,24 +117,24 @@ ${validVersions.join(", ")}`,
 export function parseStrategies<T extends string>(
     input: string,
     valid: readonly T[],
-    label: string,
+    label: string
 ): T[] {
     const strategies: Set<T> = new Set(
         input
-            .split(",")
+            .split(',')
             .map((s) => s.trim().toLowerCase() as T)
-            .filter((s) => s.length > 0),
+            .filter((s) => s.length > 0)
     );
 
     if (strategies.size === 0) {
-        return ["none" as T];
+        return ['none' as T];
     }
 
     for (const s of strategies) {
         if (!valid.includes(s)) {
-            throw new Error(`Invalid ${label} strategy '${s}'. Valid values: ${valid.join(", ")}`);
-        } else if (s === "none") {
-            return ["none" as T];
+            throw new Error(`Invalid ${label} strategy '${s}'. Valid values: ${valid.join(', ')}`);
+        } else if (s === 'none') {
+            return ['none' as T];
         }
     }
 
@@ -144,9 +144,9 @@ export function parseStrategies<T extends string>(
 export async function parseValgrindStrategies(): Promise<ValgrindStrategy[]> {
     try {
         return parseStrategies<ValgrindStrategy>(
-            core.getInput("valgrind-strategy") || DEFAULT_VALGRIND_STRATEGY,
+            core.getInput('valgrind-strategy') || DEFAULT_VALGRIND_STRATEGY,
             VALID_VALGRIND_STRATEGIES,
-            "valgrind",
+            'valgrind'
         );
     } catch (error) {
         throw new Error(`Invalid valgrind-strategy: ${(error as Error).message}`);
@@ -154,11 +154,11 @@ export async function parseValgrindStrategies(): Promise<ValgrindStrategy[]> {
 }
 
 export async function parseValgrindUrl(): Promise<string> {
-    return core.getInput("valgrind-url") || "";
+    return core.getInput('valgrind-url') || '';
 }
 
 export async function parseValgrindShaUrl(): Promise<string> {
-    return core.getInput("valgrind-sha-url") || "";
+    return core.getInput('valgrind-sha-url') || '';
 }
 
 export async function parseValgrindVersion(): Promise<Version> {
@@ -166,7 +166,7 @@ export async function parseValgrindVersion(): Promise<Version> {
     let valgrindVersion: Version;
 
     try {
-        valgrindVersionInput = core.getInput("valgrind-version") || "latest";
+        valgrindVersionInput = core.getInput('valgrind-version') || 'latest';
         valgrindVersion = Version.fromString(valgrindVersionInput);
     } catch (error) {
         throw new Error(`Invalid valgrind-version: ${(error as Error).message} `);
@@ -176,7 +176,7 @@ export async function parseValgrindVersion(): Promise<Version> {
         let validVersions: ResolvedVersion[];
         try {
             validVersions = (await fetchSortedValgrindVersions()).filter(
-                (v) => v.major >= 3 && v.minor >= 16,
+                (v) => v.major >= 3 && v.minor >= 16
             );
         } catch {
             throw new Error(`Failed to validate valgrind version`);
@@ -184,7 +184,7 @@ export async function parseValgrindVersion(): Promise<Version> {
 
         if (!validVersions.some((v) => v.equals(valgrindVersion))) {
             throw new Error(`Invalid valgrind-version '${valgrindVersionInput}': \
-Supported versions are: ${validVersions.join(", ")}`);
+Supported versions are: ${validVersions.join(', ')}`);
         }
     }
 
@@ -192,5 +192,5 @@ Supported versions are: ${validVersions.join(", ")}`);
 }
 
 export async function parseInstallBuildDeps(): Promise<boolean> {
-    return core.getBooleanInput("install-build-deps") || false;
+    return core.getBooleanInput('install-build-deps') || false;
 }

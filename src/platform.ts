@@ -1,5 +1,5 @@
-import { ResolvedVersion } from "./version";
-import { execSudo, execSudoWithOutput } from "./utils";
+import { ResolvedVersion } from './version';
+import { execSudo, execSudoWithOutput } from './utils';
 
 export interface PackageManager {
     accept<T>(v: PackageManagerVisitor<T>): T;
@@ -17,14 +17,14 @@ export interface PackageManagerVisitor<T> {
 }
 
 export class Apk implements PackageManager {
-    private readonly debugInfoPackages: string[] = ["musl-dbg"];
+    private readonly debugInfoPackages: string[] = ['musl-dbg'];
     // The busybox sed doesn't work with the configure script
     private readonly valgrindBuildDeps: string[] = [
-        "build-dev",
-        "bzip2",
-        "sed",
-        "perl",
-        "linux-headers",
+        'build-dev',
+        'bzip2',
+        'sed',
+        'perl',
+        'linux-headers'
     ];
 
     accept<T>(v: PackageManagerVisitor<T>) {
@@ -40,13 +40,13 @@ export class Apk implements PackageManager {
     }
 
     async updateCache(): Promise<void> {
-        await execSudo("apk", "update");
+        await execSudo('apk', 'update');
     }
 }
 
 export class AptGet implements PackageManager {
-    private readonly debugInfoPackages: string[] = ["libc6-dbg"];
-    private readonly valgrindBuildDeps: string[] = ["gcc", "make", "bzip2"];
+    private readonly debugInfoPackages: string[] = ['libc6-dbg'];
+    private readonly valgrindBuildDeps: string[] = ['gcc', 'make', 'bzip2'];
 
     accept<T>(v: PackageManagerVisitor<T>) {
         return v.visitAptGet(this);
@@ -61,13 +61,13 @@ export class AptGet implements PackageManager {
     }
 
     async updateCache(): Promise<void> {
-        await execSudo("apt-get", "update", "-qq");
+        await execSudo('apt-get', 'update', '-qq');
     }
 }
 
 export class Dnf implements PackageManager {
-    private readonly debugInfoPackages: string[] = ["glibc-debuginfo"];
-    private readonly valgrindBuildDeps: string[] = ["gcc", "make", "bzip2"];
+    private readonly debugInfoPackages: string[] = ['glibc-debuginfo'];
+    private readonly valgrindBuildDeps: string[] = ['gcc', 'make', 'bzip2'];
 
     accept<T>(v: PackageManagerVisitor<T>) {
         return v.visitDnf(this);
@@ -75,7 +75,7 @@ export class Dnf implements PackageManager {
 
     extractVersionStrings(output: string, pkg: string): string[] | null {
         // sample: "valgrind.x86_64   3.17.0-1.fc34   updates"
-        const regex = new RegExp(String.raw`^${pkg}[^\s]*\s+([^\s]+).*`, "gm");
+        const regex = new RegExp(String.raw`^${pkg}[^\s]*\s+([^\s]+).*`, 'gm');
         const matches = [...output.matchAll(regex)];
 
         if (matches.length === 0) {
@@ -96,8 +96,8 @@ export class Dnf implements PackageManager {
 export class Pacman implements PackageManager {
     // Arch linux doesn't ship the debug symbols with glibc and doesn't have them as a separate
     // package. Instead, arch linux relies on debuginfod.
-    private readonly debugInfoPackages: string[] = ["debuginfod"];
-    private readonly valgrindBuildDeps: string[] = ["gcc", "make", "bzip2"];
+    private readonly debugInfoPackages: string[] = ['debuginfod'];
+    private readonly valgrindBuildDeps: string[] = ['gcc', 'make', 'bzip2'];
 
     accept<T>(v: PackageManagerVisitor<T>) {
         return v.visitPacman(this);
@@ -112,7 +112,7 @@ export class Pacman implements PackageManager {
     }
 
     async updateCache(): Promise<void> {
-        await execSudo("pacman", "-Sy");
+        await execSudo('pacman', '-Sy');
     }
 }
 
@@ -124,8 +124,8 @@ export class Yum extends Dnf implements PackageManager {
 
 export class Zypper implements PackageManager {
     // This package is part of the `--plus-content debug` repository
-    private readonly debugInfoPackages: string[] = ["glibc-debuginfo"];
-    private readonly valgrindBuildDeps: string[] = ["gcc", "make", "bzip2"];
+    private readonly debugInfoPackages: string[] = ['glibc-debuginfo'];
+    private readonly valgrindBuildDeps: string[] = ['gcc', 'make', 'bzip2'];
 
     accept<T>(v: PackageManagerVisitor<T>) {
         return v.visitZypper(this);
@@ -164,9 +164,9 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
     async visitAptGet(pm: AptGet) {
         await pm.updateCache();
 
-        const output = await execSudoWithOutput("apt-cache", "policy", this.pkg);
+        const output = await execSudoWithOutput('apt-cache', 'policy', this.pkg);
         // sample: "  Installed: (none)\n  Candidate: 1:3.15.0-1"
-        const regex = new RegExp(String.raw`^\s*Candidate:\s*([^\s]+)`, "gm");
+        const regex = new RegExp(String.raw`^\s*Candidate:\s*([^\s]+)`, 'gm');
         const matches = [...output.matchAll(regex)];
 
         return FetchLatestPackageVersion.getLatestVersion(matches.map((m) => m![1]));
@@ -175,19 +175,19 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
     async visitApk(pm: Apk) {
         await pm.updateCache();
 
-        const output = await execSudoWithOutput("apk", "policy", this.pkg);
+        const output = await execSudoWithOutput('apk', 'policy', this.pkg);
         // sample policy:
         // "valgrind policy:
         //    3.25.1-r2:
         //      https://dl-cdn.alpinelinux.org/alpine/v3.23/main"
-        const regex = new RegExp(String.raw`${this.pkg}\s*policy:\s*([^\s:]+):`, "gm");
+        const regex = new RegExp(String.raw`${this.pkg}\s*policy:\s*([^\s:]+):`, 'gm');
         const matches = [...output.matchAll(regex)];
 
         return FetchLatestPackageVersion.getLatestVersion(matches.map((m) => m![1]));
     }
 
     async visitDnf(pm: Dnf) {
-        const output = await execSudoWithOutput("dnf", "list", "--showduplicates", this.pkg);
+        const output = await execSudoWithOutput('dnf', 'list', '--showduplicates', this.pkg);
         let matches = pm.extractVersionStrings(output, this.pkg);
 
         return FetchLatestPackageVersion.getLatestVersion(matches);
@@ -196,9 +196,9 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
     async visitPacman(pm: Pacman) {
         await pm.updateCache();
 
-        const output = await execSudoWithOutput("pacman", "-Si", this.pkg);
+        const output = await execSudoWithOutput('pacman', '-Si', this.pkg);
         // sample: "Version         : 3.17.0-1"
-        const regex = new RegExp(String.raw`^\s*Version\s*:\s*([^\s]+)`, "gm");
+        const regex = new RegExp(String.raw`^\s*Version\s*:\s*([^\s]+)`, 'gm');
         const matches = [...output.matchAll(regex)];
 
         return FetchLatestPackageVersion.getLatestVersion(matches?.map((m) => m![1]));
@@ -207,7 +207,7 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
     async visitYum(pm: Yum): Promise<ResolvedVersion | null> {
         let output: string;
         try {
-            output = await execSudoWithOutput("yum", "list", "--showduplicates", this.pkg);
+            output = await execSudoWithOutput('yum', 'list', '--showduplicates', this.pkg);
         } catch {
             return new Dnf().accept(new FetchLatestPackageVersion(this.pkg));
         }
@@ -217,9 +217,9 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
     }
 
     async visitZypper(_pm: Zypper) {
-        const output = await execSudoWithOutput("zypper", "info", this.pkg);
+        const output = await execSudoWithOutput('zypper', 'info', this.pkg);
         // sample: "Version   : 3.17.0-1.1"
-        const regex = new RegExp(String.raw`^\s*Version\s*:\s*([^\s]+)`, "gm");
+        const regex = new RegExp(String.raw`^\s*Version\s*:\s*([^\s]+)`, 'gm');
         const matches = [...output.matchAll(regex)];
 
         return FetchLatestPackageVersion.getLatestVersion(matches.map((m) => m![1]));
@@ -240,34 +240,34 @@ export class PackagesInstaller implements PackageManagerVisitor<Promise<void>> {
     async visitAptGet(pm: AptGet): Promise<void> {
         if (this.hasPackages()) {
             await pm.updateCache();
-            await execSudoWithOutput("apt-get", "install", "-y", ...this.pkgs);
+            await execSudoWithOutput('apt-get', 'install', '-y', ...this.pkgs);
         }
     }
 
     async visitApk(pm: Apk): Promise<void> {
         if (this.hasPackages()) {
             await pm.updateCache();
-            await execSudoWithOutput("apk", "add", "--interactive=no", ...this.pkgs);
+            await execSudoWithOutput('apk', 'add', '--interactive=no', ...this.pkgs);
         }
     }
 
     async visitDnf(_pm: Dnf): Promise<void> {
         if (this.hasPackages()) {
-            await execSudoWithOutput("dnf", "install", "-y", ...this.pkgs);
+            await execSudoWithOutput('dnf', 'install', '-y', ...this.pkgs);
         }
     }
 
     async visitPacman(pm: Pacman): Promise<void> {
         if (this.hasPackages()) {
             await pm.updateCache();
-            await execSudoWithOutput("pacman", "-S", "--noconfirm", ...this.pkgs);
+            await execSudoWithOutput('pacman', '-S', '--noconfirm', ...this.pkgs);
         }
     }
 
     async visitYum(_pm: Yum): Promise<void> {
         if (this.hasPackages()) {
             try {
-                await execSudoWithOutput("yum", "install", "-y", ...this.pkgs);
+                await execSudoWithOutput('yum', 'install', '-y', ...this.pkgs);
             } catch {
                 return new Dnf().accept(new PackagesInstaller(...this.pkgs));
             }
@@ -277,12 +277,12 @@ export class PackagesInstaller implements PackageManagerVisitor<Promise<void>> {
     async visitZypper(_pm: Zypper): Promise<void> {
         if (this.hasPackages()) {
             await execSudoWithOutput(
-                "zypper",
-                "--non-interactive",
-                "--plus-content",
-                "debug",
-                "install",
-                ...this.pkgs,
+                'zypper',
+                '--non-interactive',
+                '--plus-content',
+                'debug',
+                'install',
+                ...this.pkgs
             );
         }
     }
