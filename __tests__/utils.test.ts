@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
-import * as utils from "../utils";
+import * as utils from "../src/utils";
 import * as fs from "fs";
 
 import { afterEach } from "node:test";

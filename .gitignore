@@ -4,6 +4,10 @@ lib/
 
 .vagrant/
 *.box
+
+Dockerfile
+compose.yml
+
 #--------------------------------------------------#
 # The following was generated with gitignore.nvim: #
 #--------------------------------------------------#
@@ -100,7 +104,7 @@ out
 
 # Nuxt.js build / generate output
 .nuxt
-dist
+# dist
 
 # Gatsby files
 .cache/

@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
-import { detectProjectVersion, detectTarget } from "../detect";
-import { fetchRunnerVersions, fetchSortedValgrindVersions } from "../resolve";
+import { detectProjectVersion, detectTarget } from "../src/detect";
+import { fetchRunnerVersions, fetchSortedValgrindVersions } from "../src/resolve";
 import {
     DEFAULT_RUNNER_STRATEGY,
     DEFAULT_VALGRIND_STRATEGY,
@@ -16,12 +16,12 @@ import {
     parseValgrindVersion,
     VALID_RUNNER_STRATEGIES,
     VALID_VALGRIND_STRATEGIES,
-} from "../inputs";
-import { ResolvedVersion, Version } from "../version";
+} from "../src/inputs";
+import { ResolvedVersion, Version } from "../src/version";
 
 jest.mock("@actions/core");
-jest.mock("../detect");
-jest.mock("../resolve");
+jest.mock("../src/detect");
+jest.mock("../src/resolve");
 
 afterEach(() => jest.restoreAllMocks());
 

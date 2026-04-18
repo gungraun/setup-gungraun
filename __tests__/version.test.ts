@@ -1,4 +1,4 @@
-import { ResolvedVersion, Version } from "../version";
+import { ResolvedVersion, Version } from "../src/version";
 
 describe("Version from a valgrind tag", () => {
     it("with ^{} suffix", () => {

@@ -3,27 +3,27 @@ import * as exec from "@actions/exec";
 import * as fs from "fs";
 import * as io from "@actions/io";
 import * as os from "os";
-import { detectArch, detectPlatform, detectTarget } from "../detect";
+import { detectArch, detectPlatform, detectTarget } from "../src/detect";
 import {
     downloadAndExtractRunner,
     downloadAndExtractValgrind,
     downloadAndExtractValgrindSource,
     downloadAndExtractValgrindUrl,
-} from "../download";
-import { PackagesInstaller } from "../platform";
+} from "../src/download";
+import { PackagesInstaller } from "../src/platform";
 import {
     resolveValgrindBuilderAssetName,
     resolveValgrindVersion,
     resolveRunnerVersion,
-} from "../resolve";
+} from "../src/resolve";
 import {
     findBinary,
     logInstalledVersion,
     printError,
     printInfo,
     printWarning,
-} from "../utils";
-import { ResolvedVersion, Version } from "../version";
+} from "../src/utils";
+import { ResolvedVersion, Version } from "../src/version";
 import {
     getRunnerInstallDir,
     installDebugSymbols,
@@ -36,17 +36,17 @@ import {
     installValgrindBuildDeps,
     installValgrindWithPackageManager,
     installValgrindFromSource,
-} from "../install";
+} from "../src/install";
 
 jest.mock("@actions/core");
 jest.mock("@actions/exec");
 jest.mock("@actions/io");
 jest.mock("os");
-jest.mock("../detect");
-jest.mock("../download");
-jest.mock("../resolve");
+jest.mock("../src/detect");
+jest.mock("../src/download");
+jest.mock("../src/resolve");
 
-jest.mock("../utils", () => ({
+jest.mock("../src/utils", () => ({
     findBinary: jest.fn(),
     getCargoBin: jest.fn(() => "cargo"),
     logInstalledVersion: jest.fn().mockResolvedValue(undefined),

@@ -1,9 +1,9 @@
 import * as crypto from "crypto";
 import * as fs from "fs";
 
-import { extractHash, verifySha } from "../hash";
-import { detectShaVariant } from "../detect";
-import { printInfo } from "../utils";
+import { extractHash, verifySha } from "../src/hash";
+import { detectShaVariant } from "../src/detect";
+import { printInfo } from "../src/utils";
 
 jest.mock("fs", () => {
     const realFs = jest.requireActual("fs");
@@ -14,9 +14,9 @@ jest.mock("fs", () => {
 });
 
 jest.mock("crypto");
-jest.mock("../detect");
-jest.mock("../utils", () => {
-    const actual = jest.requireActual("../utils");
+jest.mock("../src/detect");
+jest.mock("../src/utils", () => {
+    const actual = jest.requireActual("../src/utils");
     return {
         ...actual,
         printInfo: jest.fn(),

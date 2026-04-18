@@ -1,20 +1,20 @@
 import * as tc from "@actions/tool-cache";
 import * as path from "path";
-import { verifySha } from "../hash";
-import { fetchReleaseAssetData } from "../resolve";
+import { verifySha } from "../src/hash";
+import { fetchReleaseAssetData } from "../src/resolve";
 import {
     downloadAndExtractRelease,
     downloadAndExtractRunner,
     downloadAndExtractValgrindUrl,
     downloadAndExtractValgrindSource,
     downloadAndExtractValgrind,
-} from "../download";
-import { ResolvedVersion } from "../version";
+} from "../src/download";
+import { ResolvedVersion } from "../src/version";
 
 jest.mock("@actions/tool-cache");
-jest.mock("../hash");
-jest.mock("../resolve");
-jest.mock("../utils", () => ({
+jest.mock("../src/hash");
+jest.mock("../src/resolve");
+jest.mock("../src/utils", () => ({
     GUNGRAUN_REPO: "gungraun/gungraun",
     VALGRIND_BUILDER_REPO: "gungraun/valgrind-builder",
 }));

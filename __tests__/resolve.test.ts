@@ -7,8 +7,8 @@ import {
     resolveRunnerVersion,
     resolveValgrindBuilderAssetName,
     resolveValgrindVersion,
-} from "../resolve";
-import { ResolvedVersion, Version } from "../version";
+} from "../src/resolve";
+import { ResolvedVersion, Version } from "../src/version";
 
 jest.mock("@actions/github");
 jest.mock("@actions/exec");

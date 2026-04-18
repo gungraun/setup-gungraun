@@ -1,6 +1,6 @@
 import * as exec from "@actions/exec";
 import * as fs from "fs";
-import { Apk, AptGet, Dnf, Pacman, Yum, Zypper } from "../platform";
+import { Apk, AptGet, Dnf, Pacman, Yum, Zypper } from "../src/platform";
 import {
     detectArch,
     detectPlatform,
@@ -8,11 +8,11 @@ import {
     detectShaVariant,
     detectTarget,
     resolvePackageManager,
-} from "../detect";
-import { ResolvedVersion } from "../version";
+} from "../src/detect";
+import { ResolvedVersion } from "../src/version";
 
 jest.mock("@actions/exec");
-jest.mock("../utils", () => ({
+jest.mock("../src/utils", () => ({
     getCargoBin: jest.fn(() => "cargo"),
 }));
 jest.mock("fs", () => {

@@ -1,4 +1,4 @@
-import * as utils from "../utils";
+import * as utils from "../src/utils";
 import {
     Apk,
     AptGet,
@@ -9,10 +9,10 @@ import {
     Zypper,
     FetchLatestPackageVersion,
     PackagesInstaller,
-} from "../platform";
-import { ResolvedVersion } from "../version";
+} from "../src/platform";
+import { ResolvedVersion } from "../src/version";
 
-jest.mock("../utils");
+jest.mock("../src/utils");
 
 afterEach(() => jest.resetAllMocks());
 
