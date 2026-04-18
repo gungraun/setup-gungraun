@@ -23,6 +23,7 @@
     "main": "dist/index.js",
     "scripts": {
         "build": "ncc build src/main.ts -o dist --source-map",
+        "build:check": "npm run build && git diff --exit-code --quiet dist/",
         "bundle": "npm run format:write && npm run package",
         "check": "tsc --noEmit",
         "format:check": "prettier --check .",
@@ -34,7 +35,7 @@
         "test:coverage": "jest --coverage"
     },
     "simple-git-hooks": {
-        "pre-commit": "npm run format:write && npm run lint",
+        "pre-commit": "npm run format:write && npm run lint && npm run build:check",
         "pre-push": "npm run format:write && npm run lint && npm test && npm run build"
     },
     "dependencies": {

@@ -34,8 +34,7 @@ jobs:
         with:
           node-version-file: .node-version
       - run: npm ci
-      - run: npm run build
-      - run: git diff --exit-code dist/
+      - run: npm run build:check
 
   test-runner:
     needs: [format-and-lint, build]
