@@ -78,7 +78,7 @@ export async function parseRunnerStrategies(): Promise<RunnerStrategy[]> {
 }
 
 export async function parseRunnerVersion(githubToken: string): Promise<Version> {
-    let runnerVersionInput = core.getInput('runner-version') || 'auto';
+    const runnerVersionInput = core.getInput('runner-version') || 'auto';
     let runnerVersion: Version;
 
     if (runnerVersionInput.toLowerCase() === 'auto') {

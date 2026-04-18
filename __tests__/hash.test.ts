@@ -159,6 +159,8 @@ describe('verifySha', () => {
         await expect(verifySha(256, archivePath, shaPath)).rejects.toThrow(
             /Expected: expectedhash/
         );
-        await expect(verifySha(256, archivePath, shaPath)).rejects.toThrow(/Actual:   actualhash/);
+        await expect(verifySha(256, archivePath, shaPath)).rejects.toThrow(
+            /Actual:[ ]{3}actualhash/
+        );
     });
 });

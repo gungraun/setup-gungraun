@@ -164,7 +164,7 @@ export async function installRunnerFromRelease(
 export async function installRunnerFromSource(version: Version, target?: string): Promise<boolean> {
     return withGroup('Installing gungraun-runner via cargo install', async () => {
         try {
-            let args = ['install', 'gungraun-runner'];
+            const args = ['install', 'gungraun-runner'];
             if (!version.isLatest()) {
                 args.push('--version', version.toString());
             }

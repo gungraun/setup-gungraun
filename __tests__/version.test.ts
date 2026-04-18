@@ -268,7 +268,7 @@ describe('ResolvedVersion from a valgrind tag', () => {
     it('calls super function', () => {
         const spy = jest.spyOn(Version, 'fromValgrindTag');
 
-        let version = ResolvedVersion.fromValgrindTag('VALGRIND_3_9_0');
+        const version = ResolvedVersion.fromValgrindTag('VALGRIND_3_9_0');
 
         expect(spy).toHaveBeenCalledWith('VALGRIND_3_9_0');
         expect(version).toEqual({ major: 3, minor: 9, patch: 0 });
@@ -280,7 +280,7 @@ describe('ResolvedVersion from a string', () => {
     it('calls super function', () => {
         const spy = jest.spyOn(Version, 'fromString');
 
-        let version = ResolvedVersion.fromString('10.20.30');
+        const version = ResolvedVersion.fromString('10.20.30');
 
         expect(spy).toHaveBeenCalledWith('10.20.30');
         expect(version).toEqual({ major: 10, minor: 20, patch: 30 });

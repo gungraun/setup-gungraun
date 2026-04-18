@@ -188,7 +188,7 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
 
     async visitDnf(pm: Dnf) {
         const output = await execSudoWithOutput('dnf', 'list', '--showduplicates', this.pkg);
-        let matches = pm.extractVersionStrings(output, this.pkg);
+        const matches = pm.extractVersionStrings(output, this.pkg);
 
         return FetchLatestPackageVersion.getLatestVersion(matches);
     }
@@ -212,7 +212,7 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
             return new Dnf().accept(new FetchLatestPackageVersion(this.pkg));
         }
 
-        let matches = pm.extractVersionStrings(output, this.pkg);
+        const matches = pm.extractVersionStrings(output, this.pkg);
         return FetchLatestPackageVersion.getLatestVersion(matches);
     }
 

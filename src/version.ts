@@ -113,12 +113,12 @@ export class ResolvedVersion extends Version {
     }
 
     static fromValgrindTag(tag: string): ResolvedVersion {
-        let version = super.fromValgrindTag(tag);
+        const version = super.fromValgrindTag(tag);
         return ResolvedVersion.fromVersion(version);
     }
 
     static fromString(str: string): ResolvedVersion {
-        let version = super.fromString(str);
+        const version = super.fromString(str);
         if (version.isAutoOrLatest()) {
             throw new Error("A resolved version cannot be 'latest' or 'auto'");
         }

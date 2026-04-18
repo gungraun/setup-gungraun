@@ -42,7 +42,7 @@ async function run(): Promise<void> {
                 ignoreReturnCode: true
             });
             printInfo(`Valgrind already installed: ${stdout.trim()} (${valgrindPath})`);
-        } catch (error) {
+        } catch {
             printInfo(`Valgrind already installed (${valgrindPath})`);
         }
     } else {

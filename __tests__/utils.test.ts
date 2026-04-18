@@ -34,7 +34,7 @@ describe('bail', () => {
 
 describe('escapeRegex', () => {
     it('with all special chars', () => {
-        expect(utils.escapeRegex('.*+?^${}()|[\]\\]')).toEqual(
+        expect(utils.escapeRegex('.*+?^${}()|[]\\]')).toEqual(
             '\\.\\*\\+\\?\\^\\$\\{\\}\\(\\)\\|\\[\\]\\\\\\]'
         );
     });
