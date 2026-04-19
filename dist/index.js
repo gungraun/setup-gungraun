@@ -32884,7 +32884,8 @@ async function detectProjectVersion() {
         }
         if (pkgs && pkgs.length > 1) {
             const versions = pkgs.map((p) => p.version).join(', ');
-            throw new Error(`Multiple gungraun versions detected in project (${versions}). Set runner-version explicitly.`);
+            throw new Error(`Multiple gungraun versions detected in project (${versions}). Set runner-version \
+explicitly.`);
         }
     }
     try {
@@ -32998,11 +32999,11 @@ async function downloadAndExtractRelease(repo, version, assetName, githubToken) 
     return extractDir;
 }
 async function downloadAndExtractValgrindUrl(valgrindUrl, valgrindShaUrl) {
-    const archivePath = await tc.downloadTool(valgrindUrl);
+    const archivePath = await tc.downloadTool(valgrindUrl.toString());
     const name = path_1.default.basename(archivePath);
     const assetName = path_1.default.basename(new URL(valgrindUrl).pathname);
     if (valgrindShaUrl) {
-        const shaPath = await tc.downloadTool(valgrindShaUrl);
+        const shaPath = await tc.downloadTool(valgrindShaUrl.toString());
         await (0, hash_1.verifySha)('auto', archivePath, shaPath, assetName);
     }
     const extractDir = await tc.extractTar(archivePath);
@@ -33329,13 +33330,21 @@ async function parseValgrindStrategies() {
         throw new Error(`Invalid valgrind-strategy: ${error.message}`);
     }
 }
-// FIX: use URL and return it
 async function parseValgrindUrl() {
-    return core.getInput('valgrind-url') || '';
+    try {
+        return new URL(core.getInput('valgrind-url'));
+    }
+    catch (error) {
+        throw new Error(`Invalid valgrind-url: ${error.message}`);
+    }
 }
-// FIX: use URL and return it
 async function parseValgrindShaUrl() {
-    return core.getInput('valgrind-sha-url') || '';
+    try {
+        return new URL(core.getInput('valgrind-sha-url'));
+    }
+    catch (error) {
+        throw new Error(`Invalid valgrind-sha-url: ${error.message}`);
+    }
 }
 async function parseValgrindVersion() {
     let valgrindVersionInput;

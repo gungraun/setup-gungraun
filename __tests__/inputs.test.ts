@@ -250,26 +250,38 @@ describe('parseValgrindStrategies', () => {
 describe('parseValgrindUrl', () => {
     it('when input provided then returns it', async () => {
         (core.getInput as jest.Mock).mockReturnValue('https://example.com/valgrind.tar.gz');
-        await expect(parseValgrindUrl()).resolves.toBe('https://example.com/valgrind.tar.gz');
+        await expect(parseValgrindUrl()).resolves.toEqual(
+            new URL('https://example.com/valgrind.tar.gz')
+        );
     });
 
-    it('when input empty then returns empty string', async () => {
+    it('when input empty then throws', async () => {
         (core.getInput as jest.Mock).mockReturnValue('');
-        await expect(parseValgrindUrl()).resolves.toBe('');
+        await expect(parseValgrindUrl()).rejects.toThrow('Invalid valgrind-url:');
+    });
+
+    it('when invalid url then throws', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('https////missing.colon.com');
+        await expect(parseValgrindUrl()).rejects.toThrow('Invalid valgrind-url:');
     });
 });
 
 describe('parseValgrindShaUrl', () => {
     it('when input provided then returns it', async () => {
         (core.getInput as jest.Mock).mockReturnValue('https://example.com/valgrind.tar.gz.sha256');
-        await expect(parseValgrindShaUrl()).resolves.toBe(
-            'https://example.com/valgrind.tar.gz.sha256'
+        await expect(parseValgrindShaUrl()).resolves.toEqual(
+            new URL('https://example.com/valgrind.tar.gz.sha256')
         );
     });
 
-    it('when input empty then returns empty string', async () => {
+    it('when input empty then throws', async () => {
         (core.getInput as jest.Mock).mockReturnValue('');
-        await expect(parseValgrindShaUrl()).resolves.toBe('');
+        await expect(parseValgrindShaUrl()).rejects.toThrow('Invalid valgrind-sha-url:');
+    });
+
+    it('when invalid url then throws', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('https////missing.colon.com');
+        await expect(parseValgrindShaUrl()).rejects.toThrow('Invalid valgrind-sha-url:');
     });
 });
 

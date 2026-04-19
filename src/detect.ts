@@ -123,7 +123,8 @@ export async function detectProjectVersion(): Promise<ResolvedVersion> {
         if (pkgs && pkgs.length > 1) {
             const versions = pkgs.map((p: { version: string }) => p.version).join(', ');
             throw new Error(
-                `Multiple gungraun versions detected in project (${versions}). Set runner-version explicitly.`
+                `Multiple gungraun versions detected in project (${versions}). Set runner-version \
+explicitly.`
             );
         }
     }

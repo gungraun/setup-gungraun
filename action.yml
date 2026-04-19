@@ -52,10 +52,10 @@ inputs:
   valgrind-strategy:
     description:
       'Ordered comma-separated list of valgrind install strategies to try. Valid
-      values: builder, system, source, none'
+      values: builder, system, source, none. `none` will skip the valgrind
+      installation.'
     required: false
-    # FIX: Change to builder,source,system
-    default: 'builder,system,source'
+    default: 'builder,source,system'
   valgrind-url:
     description:
       'The url to the tar archive containing the valgrind build for the

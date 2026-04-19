@@ -242,8 +242,8 @@ export async function installValgrind(
     strategies: ValgrindStrategy[],
     installBuildDeps: boolean = false,
     githubToken: string,
-    valgrindUrl: string,
-    valgrindShaUrl: string,
+    valgrindUrl: URL,
+    valgrindShaUrl: URL,
     configureArgs: string[] = [],
     makeEnvs: Map<string, string> = new Map()
 ): Promise<void> {
@@ -293,8 +293,8 @@ export async function installValgrind(
 export async function installValgrindFromBuilder(
     version: Version,
     githubToken: string,
-    valgrindUrl: string,
-    valgrindShaUrl: string
+    valgrindUrl: URL,
+    valgrindShaUrl: URL
 ): Promise<boolean> {
     return withGroup('Installing valgrind from builder', async () => {
         try {

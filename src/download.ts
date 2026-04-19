@@ -42,15 +42,15 @@ export async function downloadAndExtractRelease(
 }
 
 export async function downloadAndExtractValgrindUrl(
-    valgrindUrl: string,
-    valgrindShaUrl: string
+    valgrindUrl: URL,
+    valgrindShaUrl: URL
 ): Promise<{ extractDir: string; name: string }> {
-    const archivePath = await tc.downloadTool(valgrindUrl);
+    const archivePath = await tc.downloadTool(valgrindUrl.toString());
     const name = path.basename(archivePath);
     const assetName = path.basename(new URL(valgrindUrl).pathname);
 
     if (valgrindShaUrl) {
-        const shaPath = await tc.downloadTool(valgrindShaUrl);
+        const shaPath = await tc.downloadTool(valgrindShaUrl.toString());
         await verifySha('auto', archivePath, shaPath, assetName);
     }
 

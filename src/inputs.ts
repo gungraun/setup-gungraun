@@ -32,8 +32,8 @@ export interface Inputs {
     valgrindConfigureArgs: string[];
     valgrindMakeEnvs: Map<string, string>;
     valgrindStrategies: ValgrindStrategy[];
-    valgrindUrl: string;
-    valgrindShaUrl: string;
+    valgrindUrl: URL;
+    valgrindShaUrl: URL;
     valgrindVersion: Version;
 }
 
@@ -218,14 +218,20 @@ export async function parseValgrindStrategies(): Promise<ValgrindStrategy[]> {
     }
 }
 
-// FIX: use URL and return it
-export async function parseValgrindUrl(): Promise<string> {
-    return core.getInput('valgrind-url') || '';
+export async function parseValgrindUrl(): Promise<URL> {
+    try {
+        return new URL(core.getInput('valgrind-url'));
+    } catch (error) {
+        throw new Error(`Invalid valgrind-url: ${(error as Error).message}`);
+    }
 }
 
-// FIX: use URL and return it
-export async function parseValgrindShaUrl(): Promise<string> {
-    return core.getInput('valgrind-sha-url') || '';
+export async function parseValgrindShaUrl(): Promise<URL> {
+    try {
+        return new URL(core.getInput('valgrind-sha-url'));
+    } catch (error) {
+        throw new Error(`Invalid valgrind-sha-url: ${(error as Error).message}`);
+    }
 }
 
 export async function parseValgrindVersion(): Promise<Version> {
