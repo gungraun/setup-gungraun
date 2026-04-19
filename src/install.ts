@@ -29,6 +29,7 @@ import {
 import { Version } from './version';
 import { RunnerStrategy, ValgrindStrategy } from './inputs';
 import { PackagesInstaller, FetchLatestPackageVersion } from './platform';
+import { quote } from 'shell-quote';
 
 export function getRunnerInstallDir(): { dir: string; needsExport: boolean } | null {
     if (process.env.CARGO_INSTALL_ROOT) {
@@ -242,7 +243,8 @@ export async function installValgrind(
     installBuildDeps: boolean = false,
     githubToken: string,
     valgrindUrl: string,
-    valgrindShaUrl: string
+    valgrindShaUrl: string,
+    configureArgs: string[] = []
 ): Promise<void> {
     for (const strategy of strategies) {
         switch (strategy) {
@@ -264,7 +266,8 @@ export async function installValgrind(
             case 'source': {
                 const result = await installValgrindFromSource(
                     version.isAuto() ? Version.latest() : version,
-                    installBuildDeps
+                    installBuildDeps,
+                    configureArgs
                 );
                 if (result) return;
                 break;
@@ -430,7 +433,8 @@ export async function installValgrindBuildDeps(): Promise<boolean> {
 /** Installs valgrind from the source tarball. */
 export async function installValgrindFromSource(
     version: Version,
-    installBuildDeps: boolean = false
+    installBuildDeps: boolean = false,
+    configureArgs: string[] = []
 ): Promise<boolean> {
     return withGroup('Installing valgrind from source', async () => {
         try {
@@ -449,23 +453,33 @@ export async function installValgrindFromSource(
             const sourceDir = path.join(extractDir, `valgrind-${resolvedVersion}`);
 
             const execOpts: exec.ExecOptions = { cwd: sourceDir };
-            const args = [];
+            const args = ['--prefix=/usr'];
 
             // based on the APKBUILD:
             // https://gitlab.alpinelinux.org/alpine/aports/-/blob/68861fc5eb9fcc485c720fdf743272b41cbc313b/main/valgrind/APKBUILD
             if (id === 'alpine') {
                 execOpts.env = {
-                    ...(process.env as Record<string, string>),
-                    CFLAGS: '-fno-stack-protector -no-pie -U_FORTIFY_SOURCE'
+                    CFLAGS: '-fno-stack-protector -no-pie -U_FORTIFY_SOURCE',
+                    ...(process.env as Record<string, string>)
                 };
                 args.push('--without-mpicc');
             }
-            await exec.exec('./configure', ['--prefix=/usr', ...args], execOpts);
+            args.push(...configureArgs);
+
+            printInfo(`:: Running: ./configure ${quote(args)}`);
+            await exec.exec('./configure', args, execOpts);
 
             const ncpus = os.cpus().length;
-            await exec.exec('make', [`-j${ncpus}`, 'BUILD_DOCS=none'], execOpts);
+            const makeArgs = [`-j${ncpus}`, 'BUILD_DOCS=none'];
+
+            printInfo(`:: Running: make ${quote(args)}`);
+            await exec.exec('make', makeArgs, execOpts);
+
+            printInfo(`:: Running: make install`);
             await execPrivileged('make', ['install'], { cwd: sourceDir });
 
+            // TODO: move logInstalledVersion out of the withGroup, also in the other
+            // installValgrind functions
             await logInstalledVersion('valgrind', 'valgrind', `valgrind-${resolvedVersion}`);
         } catch (error) {
             printError(`Failed to install valgrind from source: ${(error as Error).message}`);

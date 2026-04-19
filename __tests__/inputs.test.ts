@@ -10,6 +10,7 @@ import {
     parseRunnerTarget,
     parseRunnerVersion,
     parseStrategies,
+    parseValgrindConfigureArgs,
     parseValgrindShaUrl,
     parseValgrindStrategies,
     parseValgrindUrl,
@@ -348,5 +349,57 @@ describe('parseInstallBuildDeps', () => {
     it('when input is false then returns false', async () => {
         (core.getBooleanInput as jest.Mock).mockReturnValue(false);
         await expect(parseInstallBuildDeps()).resolves.toBe(false);
+    });
+});
+
+describe('parseValgrindConfigureArgs', () => {
+    it('when input empty then returns empty array', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('');
+        await expect(parseValgrindConfigureArgs()).resolves.toEqual([]);
+    });
+
+    it('when input is whitespace only then returns empty array', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('  \n  ');
+        await expect(parseValgrindConfigureArgs()).resolves.toEqual([]);
+    });
+
+    it('when simple unquoted args then splits on whitespace', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('--without-mpicc --enable-only64bit');
+        await expect(parseValgrindConfigureArgs()).resolves.toEqual([
+            '--without-mpicc',
+            '--enable-only64bit'
+        ]);
+    });
+
+    it('when double-quoted arg then preserves as single token', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('--flags="-fno-stack-protector -no-pie"');
+        await expect(parseValgrindConfigureArgs()).resolves.toEqual([
+            '--flags=-fno-stack-protector -no-pie'
+        ]);
+    });
+
+    it('when single-quoted arg then preserves as single token', async () => {
+        (core.getInput as jest.Mock).mockReturnValue("--flags='-fno-stack-protector -no-pie'");
+        await expect(parseValgrindConfigureArgs()).resolves.toEqual([
+            '--flags=-fno-stack-protector -no-pie'
+        ]);
+    });
+
+    it('when mixed quoted and unquoted then parses correctly', async () => {
+        (core.getInput as jest.Mock).mockReturnValue(
+            '--without-mpicc --flags="-fno-stack-protector -no-pie" --enable-only64bit'
+        );
+        await expect(parseValgrindConfigureArgs()).resolves.toEqual([
+            '--without-mpicc',
+            '--flags=-fno-stack-protector -no-pie',
+            '--enable-only64bit'
+        ]);
+    });
+
+    it('when invalid token then throws', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('--without-mpicc || true');
+        await expect(parseValgrindConfigureArgs()).rejects.toThrow(
+            'Invalid valgrind-configure-args:'
+        );
     });
 });

@@ -1,4 +1,5 @@
 import * as core from '@actions/core';
+import { parse as parseShellArgs } from 'shell-quote';
 import { ResolvedVersion, Version } from './version';
 import { detectProjectVersion, detectTarget } from './detect';
 import { fetchRunnerVersions, fetchSortedValgrindVersions } from './resolve';
@@ -27,6 +28,7 @@ export interface Inputs {
     runnerStrategies: RunnerStrategy[];
     runnerTarget: string;
     runnerVersion: Version;
+    valgrindConfigureArgs: string[];
     valgrindStrategies: ValgrindStrategy[];
     valgrindUrl: string;
     valgrindShaUrl: string;
@@ -46,7 +48,9 @@ export async function parseInputs(): Promise<Inputs> {
 
     const runnerTarget = await parseRunnerTarget(isRunnerStrategyNone);
     const runnerVersion = await parseRunnerVersion(isRunnerStrategyNone, githubToken);
+
     const valgrindVersion = await parseValgrindVersion();
+    const valgrindConfigureArgs = await parseValgrindConfigureArgs();
     const valgrindStrategies = await parseValgrindStrategies();
     const valgrindUrl = await parseValgrindUrl();
     const valgrindShaUrl = await parseValgrindShaUrl();
@@ -57,6 +61,7 @@ export async function parseInputs(): Promise<Inputs> {
         runnerStrategies,
         runnerTarget,
         runnerVersion,
+        valgrindConfigureArgs,
         valgrindStrategies,
         valgrindUrl,
         valgrindShaUrl,
@@ -153,6 +158,26 @@ export function parseStrategies<T extends string>(
     }
 
     return Array.from(strategies);
+}
+
+export async function parseValgrindConfigureArgs(): Promise<string[]> {
+    const input = core.getInput('valgrind-configure-args');
+    if (!input) {
+        return [];
+    }
+
+    const parsed = parseShellArgs(input) as (string | object)[];
+    const args: string[] = [];
+    for (const token of parsed) {
+        if (typeof token !== 'string') {
+            throw new Error(
+                `Invalid valgrind-configure-args: other tokens than strings are not allowed`
+            );
+        }
+        args.push(token);
+    }
+
+    return args;
 }
 
 export async function parseValgrindStrategies(): Promise<ValgrindStrategy[]> {

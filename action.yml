@@ -32,6 +32,12 @@ inputs:
       'Version of gungraun-runner to install (e.g. v0.1.0, latest, auto)'
     required: false
     default: 'auto'
+  valgrind-configure-args:
+    description:
+      'The extra arguments to pass to the ./configure when building valgrind
+      from source'
+    required: false
+    default: ''
   valgrind-sha-url:
     description:
       'The url to the sha sum used to verify the tar archive for valgrind-url'
