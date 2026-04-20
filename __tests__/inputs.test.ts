@@ -299,7 +299,7 @@ describe('parseValgrindVersion', () => {
         (core.getInput as jest.Mock).mockReturnValue('3.22.0');
         (fetchSortedValgrindVersions as jest.Mock).mockRejectedValue(new Error('network error'));
 
-        await expect(parseValgrindVersion()).rejects.toThrow('Failed to validate valgrind version');
+        await expect(parseValgrindVersion()).rejects.toThrow('Failed to validate Valgrind version');
     });
 
     it('when version has major < 3 then filtered out and throws', async () => {

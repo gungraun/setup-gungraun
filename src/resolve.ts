@@ -1,6 +1,13 @@
 import * as exec from '@actions/exec';
 import { getOctokit } from '@actions/github';
-import { escapeRegex, GUNGRAUN_REPO, VALGRIND_BUILDER_REPO, VALGRIND_SOURCE_REPO } from './utils';
+import {
+    escapeRegex,
+    GUNGRAUN_REPO,
+    isDebug,
+    retry,
+    VALGRIND_BUILDER_REPO,
+    VALGRIND_SOURCE_REPO
+} from './utils';
 import { ResolvedVersion, Version } from './version';
 
 interface ReleaseAsset {
@@ -62,13 +69,16 @@ export async function fetchRunnerVersions(githubToken: string): Promise<Resolved
 }
 
 export async function fetchSortedValgrindVersions(): Promise<ResolvedVersion[]> {
-    const { stdout } = await exec.getExecOutput(
-        'git',
-        ['ls-remote', '--tags', VALGRIND_SOURCE_REPO],
-        {
-            silent: true
-        }
-    );
+    const stdout = await retry(5, async () => {
+        const output = await exec.getExecOutput(
+            'git',
+            ['ls-remote', '--tags', VALGRIND_SOURCE_REPO],
+            {
+                silent: !isDebug()
+            }
+        );
+        return output.stdout;
+    });
 
     const versions = stdout
         .trim()

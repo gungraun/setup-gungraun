@@ -260,7 +260,7 @@ export async function parseValgrindVersion(): Promise<Version> {
                 (v) => v.major >= 3 && v.minor >= 16
             );
         } catch {
-            throw new Error(`Failed to validate valgrind version`);
+            throw new Error(`Failed to validate Valgrind version`);
         }
 
         if (!validVersions.some((v) => v.equals(valgrindVersion))) {

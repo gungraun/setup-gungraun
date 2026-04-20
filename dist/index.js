@@ -32864,7 +32864,7 @@ async function detectPlatform() {
 async function detectProjectVersion() {
     let metadataStdout = null;
     try {
-        const { stdout } = await exec.getExecOutput((0, utils_1.getCargoBin)(), ['metadata', '--format-version=1'], { silent: true, ignoreReturnCode: true });
+        const { stdout } = await exec.getExecOutput((0, utils_1.getCargoBin)(), ['metadata', '--format-version=1'], { silent: !(0, utils_1.isDebug)(), ignoreReturnCode: true });
         metadataStdout = stdout;
     }
     catch {
@@ -32890,7 +32890,7 @@ explicitly.`);
     }
     try {
         const { stdout } = await exec.getExecOutput((0, utils_1.getCargoBin)(), ['pkgid', 'gungraun'], {
-            silent: true,
+            silent: !(0, utils_1.isDebug)(),
             ignoreReturnCode: true
         });
         return version_1.ResolvedVersion.fromString(stdout);
@@ -32903,7 +32903,7 @@ explicitly.`);
 /** Detects the Rust compiler target triple */
 async function detectTarget() {
     const { stdout } = await exec.getExecOutput('rustc', ['-vV'], {
-        silent: true
+        silent: !(0, utils_1.isDebug)()
     });
     const match = stdout.match(/^host:\s*(.+)$/m);
     if (!match) {
@@ -33014,8 +33014,12 @@ async function downloadAndExtractValgrindSource(version) {
     const assetName = `valgrind-${version}.tar.bz2`;
     const tarballUrl = `https://sourceware.org/pub/valgrind/${assetName}`;
     const shaSumsUrl = `https://sourceware.org/pub/valgrind/sha512.sum`;
-    const archivePath = await tc.downloadTool(tarballUrl);
-    const shaAsset = await tc.downloadTool(shaSumsUrl);
+    const archivePath = await (0, utils_1.retry)(5, async () => {
+        return await tc.downloadTool(tarballUrl);
+    });
+    const shaAsset = await (0, utils_1.retry)(5, async () => {
+        return await tc.downloadTool(shaSumsUrl);
+    });
     await (0, hash_1.verifySha)(512, archivePath, shaAsset, assetName);
     const extractDir = await tc.extractTar(archivePath, undefined, 'xj');
     return extractDir;
@@ -33372,7 +33376,7 @@ async function parseValgrindVersion() {
             validVersions = (await (0, resolve_1.fetchSortedValgrindVersions)()).filter((v) => v.major >= 3 && v.minor >= 16);
         }
         catch {
-            throw new Error(`Failed to validate valgrind version`);
+            throw new Error(`Failed to validate Valgrind version`);
         }
         if (!validVersions.some((v) => v.equals(valgrindVersion))) {
             throw new Error(`Invalid valgrind-version '${valgrindVersionInput}': \
@@ -33652,7 +33656,7 @@ async function installValgrindFromBuilder(version, githubToken, valgrindUrl, val
         try {
             let extractDir;
             if (valgrindUrl) {
-                (0, utils_1.printInfo)(`Downloading valgrind archive from url '${valgrindUrl}'`);
+                (0, utils_1.printInfo)(`Downloading Valgrind archive from url '${valgrindUrl}'`);
                 const { extractDir: dir } = await (0, download_1.downloadAndExtractValgrindUrl)(valgrindUrl, valgrindShaUrl);
                 extractDir = dir;
             }
@@ -33662,12 +33666,12 @@ async function installValgrindFromBuilder(version, githubToken, valgrindUrl, val
                 const arch = (0, detect_1.detectArch)(target);
                 const result = await (0, resolve_1.resolveValgrindBuilderAssetName)(version, arch, platform, githubToken);
                 if (!result) {
-                    (0, utils_1.printError)(`No valgrind builder release found for valgrind version ${version} \
+                    (0, utils_1.printError)(`No Valgrind builder release found for Valgrind version ${version} \
 (${arch}-${platform})`);
                     return false;
                 }
                 const { name } = result;
-                (0, utils_1.printInfo)(`Downloading valgrind builder archive '${name}'`);
+                (0, utils_1.printInfo)(`Downloading Valgrind builder archive '${name}'`);
                 // This is not the valgrind version. We always use the latest version of the builder
                 // release and extract the archive attached to the latest release with the given
                 // `name`.
@@ -33681,7 +33685,7 @@ async function installValgrindFromBuilder(version, githubToken, valgrindUrl, val
             ]);
         }
         catch (error) {
-            (0, utils_1.printError)(`Failed to install valgrind from release: ${error.message}`);
+            (0, utils_1.printError)(`Failed to install Valgrind from release: ${error.message}`);
             return false;
         }
         await installDebugSymbols();
@@ -33693,7 +33697,7 @@ async function installValgrindWithPackageManager(version) {
     return (0, utils_1.withGroup)('Installing valgrind via package manager', async () => {
         const { packageManager } = await (0, detect_1.detectPlatform)();
         if (!packageManager) {
-            (0, utils_1.printError)(`Cannot install valgrind: No package manager detected for this platform`);
+            (0, utils_1.printError)(`Cannot install Valgrind: No package manager detected for this platform`);
             return false;
         }
         if (!version.isAuto()) {
@@ -33789,7 +33793,7 @@ async function installValgrindFromSource(version, installBuildDeps = false, conf
             await (0, utils_1.execPrivileged)('make', ['install'], { cwd: sourceDir });
         }
         catch (error) {
-            (0, utils_1.printError)(`Failed to install valgrind from source: ${error.message}`);
+            (0, utils_1.printError)(`Failed to install Valgrind from source: ${error.message}`);
             return false;
         }
         await installDebugSymbols();
@@ -33866,7 +33870,7 @@ async function run() {
     if (valgrindPath) {
         try {
             const { stdout } = await exec.getExecOutput('valgrind', ['--version'], {
-                silent: true,
+                silent: !(0, utils_1.isDebug)(),
                 ignoreReturnCode: true
             });
             (0, utils_1.printInfo)(`Valgrind already installed: ${stdout.trim()} (${valgrindPath})`);
@@ -33884,7 +33888,7 @@ async function run() {
             }
         }
         catch (error) {
-            (0, utils_1.bail)(`Error installing valgrind: ${error.message}`);
+            (0, utils_1.bail)(`Error installing Valgrind: ${error.message}`);
         }
     }
     try {
@@ -34297,8 +34301,11 @@ async function fetchRunnerVersions(githubToken) {
     }
 }
 async function fetchSortedValgrindVersions() {
-    const { stdout } = await exec.getExecOutput('git', ['ls-remote', '--tags', utils_1.VALGRIND_SOURCE_REPO], {
-        silent: true
+    const stdout = await (0, utils_1.retry)(5, async () => {
+        const output = await exec.getExecOutput('git', ['ls-remote', '--tags', utils_1.VALGRIND_SOURCE_REPO], {
+            silent: !(0, utils_1.isDebug)()
+        });
+        return output.stdout;
     });
     const versions = stdout
         .trim()
@@ -34443,6 +34450,8 @@ exports.normalizePath = normalizePath;
 exports.printError = printError;
 exports.printInfo = printInfo;
 exports.printWarning = printWarning;
+exports.randNumber = randNumber;
+exports.retry = retry;
 exports.splitOnce = splitOnce;
 exports.withGroup = withGroup;
 const core = __importStar(__nccwpck_require__(7484));
@@ -34513,7 +34522,7 @@ function getCargoBin() {
 /** Logs the installed version of a binary, or a fallback string if unavailable. */
 async function logInstalledVersion(binary, label) {
     const { stdout } = await exec.getExecOutput(binary, ['--version'], {
-        silent: true,
+        silent: !isDebug(),
         ignoreReturnCode: true
     });
     printInfo(`${label} installed: ${stdout.trim() || 'version unknown'}`);
@@ -34538,6 +34547,25 @@ function printInfo(message) {
 /** Logs a warning message. */
 function printWarning(message) {
     core.warning(message);
+}
+function randNumber(min = 0, max) {
+    return Math.floor(Math.random() * (max - min)) + min;
+}
+async function retry(maxRetries, fn) {
+    for (let index = 0;; index++) {
+        try {
+            return await fn();
+        }
+        catch (error) {
+            if (index < maxRetries) {
+                await new Promise((r) => setTimeout(r, randNumber(5000, 20000)));
+                continue;
+            }
+            else {
+                throw error;
+            }
+        }
+    }
 }
 function splitOnce(str, sep) {
     const i = str.indexOf(sep);
@@ -34585,7 +34613,7 @@ class Version {
         if (match) {
             return new Version(Number(match[1]), Number(match[2]), Number(match[3]));
         }
-        throw new Error(`Invalid valgrind version tag: ${tag}`);
+        throw new Error(`Invalid Valgrind version tag: ${tag}`);
     }
     static fromString(str) {
         const lower = str.trim().toLowerCase();

@@ -300,7 +300,7 @@ export async function installValgrindFromBuilder(
         try {
             let extractDir: string;
             if (valgrindUrl) {
-                printInfo(`Downloading valgrind archive from url '${valgrindUrl}'`);
+                printInfo(`Downloading Valgrind archive from url '${valgrindUrl}'`);
 
                 const { extractDir: dir } = await downloadAndExtractValgrindUrl(
                     valgrindUrl,
@@ -321,7 +321,7 @@ export async function installValgrindFromBuilder(
                 );
                 if (!result) {
                     printError(
-                        `No valgrind builder release found for valgrind version ${version} \
+                        `No Valgrind builder release found for Valgrind version ${version} \
 (${arch}-${platform})`
                     );
                     return false;
@@ -329,7 +329,7 @@ export async function installValgrindFromBuilder(
 
                 const { name } = result;
 
-                printInfo(`Downloading valgrind builder archive '${name}'`);
+                printInfo(`Downloading Valgrind builder archive '${name}'`);
                 // This is not the valgrind version. We always use the latest version of the builder
                 // release and extract the archive attached to the latest release with the given
                 // `name`.
@@ -343,7 +343,7 @@ export async function installValgrindFromBuilder(
                 '/'
             ]);
         } catch (error) {
-            printError(`Failed to install valgrind from release: ${(error as Error).message}`);
+            printError(`Failed to install Valgrind from release: ${(error as Error).message}`);
 
             return false;
         }
@@ -359,7 +359,7 @@ export async function installValgrindWithPackageManager(version: Version): Promi
         const { packageManager } = await detectPlatform();
 
         if (!packageManager) {
-            printError(`Cannot install valgrind: No package manager detected for this platform`);
+            printError(`Cannot install Valgrind: No package manager detected for this platform`);
 
             return false;
         }
@@ -481,7 +481,7 @@ export async function installValgrindFromSource(
             printInfo(`:: Running: make install`);
             await execPrivileged('make', ['install'], { cwd: sourceDir });
         } catch (error) {
-            printError(`Failed to install valgrind from source: ${(error as Error).message}`);
+            printError(`Failed to install Valgrind from source: ${(error as Error).message}`);
             return false;
         }
 

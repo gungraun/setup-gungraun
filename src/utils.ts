@@ -87,7 +87,7 @@ export function getCargoBin(): string {
 /** Logs the installed version of a binary, or a fallback string if unavailable. */
 export async function logInstalledVersion(binary: string, label: string): Promise<void> {
     const { stdout } = await exec.getExecOutput(binary, ['--version'], {
-        silent: true,
+        silent: !isDebug(),
         ignoreReturnCode: true
     });
     printInfo(`${label} installed: ${stdout.trim() || 'version unknown'}`);
@@ -115,6 +115,25 @@ export function printInfo(message: string): void {
 /** Logs a warning message. */
 export function printWarning(message: string): void {
     core.warning(message);
+}
+
+export function randNumber(min: number = 0, max: number) {
+    return Math.floor(Math.random() * (max - min)) + min;
+}
+
+export async function retry<T>(maxRetries: number, fn: () => Promise<T>) {
+    for (let index = 0; ; index++) {
+        try {
+            return await fn();
+        } catch (error) {
+            if (index < maxRetries) {
+                await new Promise<void>((r) => setTimeout(r, randNumber(5000, 20000)));
+                continue;
+            } else {
+                throw error;
+            }
+        }
+    }
 }
 
 export function splitOnce(str: string, sep: string): [string, string] {

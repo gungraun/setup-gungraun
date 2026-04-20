@@ -1,6 +1,6 @@
 import * as exec from '@actions/exec';
 import * as fs from 'fs';
-import { getCargoBin } from './utils';
+import { getCargoBin, isDebug } from './utils';
 import { ResolvedVersion } from './version';
 import { Apk, AptGet, Dnf, PackageManager, Pacman, Yum, Zypper } from './platform';
 
@@ -101,7 +101,7 @@ export async function detectProjectVersion(): Promise<ResolvedVersion> {
         const { stdout } = await exec.getExecOutput(
             getCargoBin(),
             ['metadata', '--format-version=1'],
-            { silent: true, ignoreReturnCode: true }
+            { silent: !isDebug(), ignoreReturnCode: true }
         );
         metadataStdout = stdout;
     } catch {
@@ -131,7 +131,7 @@ explicitly.`
 
     try {
         const { stdout } = await exec.getExecOutput(getCargoBin(), ['pkgid', 'gungraun'], {
-            silent: true,
+            silent: !isDebug(),
             ignoreReturnCode: true
         });
         return ResolvedVersion.fromString(stdout);
@@ -147,7 +147,7 @@ explicitly.`
 /** Detects the Rust compiler target triple */
 export async function detectTarget(): Promise<string> {
     const { stdout } = await exec.getExecOutput('rustc', ['-vV'], {
-        silent: true
+        silent: !isDebug()
     });
     const match = stdout.match(/^host:\s*(.+)$/m);
     if (!match) {

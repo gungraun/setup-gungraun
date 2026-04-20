@@ -1,6 +1,6 @@
 import * as tc from '@actions/tool-cache';
 import { fetchReleaseAssetData } from './resolve';
-import { GUNGRAUN_REPO, VALGRIND_BUILDER_REPO } from './utils';
+import { GUNGRAUN_REPO, retry, VALGRIND_BUILDER_REPO } from './utils';
 import { ResolvedVersion, Version } from './version';
 import path from 'path';
 import { verifySha } from './hash';
@@ -64,8 +64,12 @@ export async function downloadAndExtractValgrindSource(version: ResolvedVersion)
     const tarballUrl = `https://sourceware.org/pub/valgrind/${assetName}`;
     const shaSumsUrl = `https://sourceware.org/pub/valgrind/sha512.sum`;
 
-    const archivePath = await tc.downloadTool(tarballUrl);
-    const shaAsset = await tc.downloadTool(shaSumsUrl);
+    const archivePath = await retry(5, async () => {
+        return await tc.downloadTool(tarballUrl);
+    });
+    const shaAsset = await retry(5, async () => {
+        return await tc.downloadTool(shaSumsUrl);
+    });
 
     await verifySha(512, archivePath, shaAsset, assetName);
 

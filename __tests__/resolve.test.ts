@@ -166,7 +166,7 @@ def456\trefs/tags/VALGRIND_3_20_0`;
     it('when no versions found then throws', async () => {
         (exec.getExecOutput as jest.Mock).mockResolvedValue({ stdout: '' });
 
-        await expect(fetchSortedValgrindVersions()).rejects.toThrow('Invalid valgrind version tag');
+        await expect(fetchSortedValgrindVersions()).rejects.toThrow('Invalid Valgrind version tag');
     });
 
     it('when only ^{} refs present then throws', async () => {
@@ -181,7 +181,7 @@ def456\trefs/tags/VALGRIND_3_20_0`;
     it('when whitespace-only stdout then throws', async () => {
         (exec.getExecOutput as jest.Mock).mockResolvedValue({ stdout: '   \n  ' });
 
-        await expect(fetchSortedValgrindVersions()).rejects.toThrow('Invalid valgrind version tag');
+        await expect(fetchSortedValgrindVersions()).rejects.toThrow('Invalid Valgrind version tag');
     });
 
     it('when full format with hash prefix', async () => {

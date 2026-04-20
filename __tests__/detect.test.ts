@@ -13,7 +13,8 @@ import { ResolvedVersion } from '../src/version';
 
 jest.mock('@actions/exec');
 jest.mock('../src/utils', () => ({
-    getCargoBin: jest.fn(() => 'cargo')
+    getCargoBin: jest.fn(() => 'cargo'),
+    isDebug: jest.fn(() => false)
 }));
 jest.mock('fs', () => {
     const realFs = jest.requireActual('fs');

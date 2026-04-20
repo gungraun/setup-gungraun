@@ -622,7 +622,7 @@ describe('installValgrindFromBuilder', () => {
             new URL('https://example.com/vg.sha256')
         );
         expect(printInfo).toHaveBeenCalledWith(
-            "Downloading valgrind archive from url 'https://example.com/vg.tar.gz'"
+            "Downloading Valgrind archive from url 'https://example.com/vg.tar.gz'"
         );
     });
 
@@ -675,7 +675,7 @@ describe('installValgrindFromBuilder', () => {
 
         expect(result).toBe(false);
         expect(printError).toHaveBeenCalledWith(
-            expect.stringContaining('No valgrind builder release found')
+            expect.stringContaining('No Valgrind builder release found')
         );
     });
 
@@ -692,7 +692,7 @@ describe('installValgrindFromBuilder', () => {
 
         expect(result).toBe(false);
         expect(printError).toHaveBeenCalledWith(
-            'Failed to install valgrind from release: download failed'
+            'Failed to install Valgrind from release: download failed'
         );
     });
 
@@ -737,7 +737,7 @@ describe('installValgrindWithPackageManager', () => {
 
         expect(result).toBe(false);
         expect(printError).toHaveBeenCalledWith(
-            'Cannot install valgrind: No package manager detected for this platform'
+            'Cannot install Valgrind: No package manager detected for this platform'
         );
     });
 
@@ -1106,7 +1106,7 @@ describe('installValgrindFromSource', () => {
 
         expect(result).toBe(false);
         expect(printError).toHaveBeenCalledWith(
-            'Failed to install valgrind from source: make failed'
+            'Failed to install Valgrind from source: make failed'
         );
     });
 });
