@@ -2,8 +2,6 @@ import * as core from '@actions/core';
 import { detectProjectVersion, detectTarget } from '../src/detect';
 import { fetchRunnerVersions, fetchSortedValgrindVersions } from '../src/resolve';
 import {
-    DEFAULT_RUNNER_STRATEGY,
-    DEFAULT_VALGRIND_STRATEGY,
     parseGithubToken,
     parseInstallBuildDeps,
     parseRunnerStrategies,
@@ -97,23 +95,9 @@ describe('parseGithubToken', () => {
         await expect(parseGithubToken()).resolves.toBe('token-from-input');
     });
 
-    it('when core input empty then falls back to env var', async () => {
+    it('when core input empty then returns empty string', async () => {
         (core.getInput as jest.Mock).mockReturnValue('');
-        jest.replaceProperty(process, 'env', { ...process.env, GITHUB_TOKEN: 'env-token' });
-        await expect(parseGithubToken()).resolves.toBe('env-token');
-    });
-
-    it('when neither available then returns empty string', async () => {
-        (core.getInput as jest.Mock).mockReturnValue('');
-        jest.replaceProperty(process, 'env', { ...process.env });
-        delete process.env.GITHUB_TOKEN;
         await expect(parseGithubToken()).resolves.toBe('');
-    });
-
-    it('when env var has whitespace then trims', async () => {
-        (core.getInput as jest.Mock).mockReturnValue('');
-        jest.replaceProperty(process, 'env', { ...process.env, GITHUB_TOKEN: '  token  ' });
-        await expect(parseGithubToken()).resolves.toBe('token');
     });
 });
 
@@ -140,13 +124,6 @@ describe('parseRunnerStrategies', () => {
     it('when input provided then parses strategies', async () => {
         (core.getInput as jest.Mock).mockReturnValue('binstall,release');
         await expect(parseRunnerStrategies()).resolves.toEqual(['binstall', 'release']);
-    });
-
-    it('when input empty then uses default', async () => {
-        (core.getInput as jest.Mock).mockReturnValue('');
-        await expect(parseRunnerStrategies()).resolves.toEqual(
-            DEFAULT_RUNNER_STRATEGY.split(',').map((s) => s.trim())
-        );
     });
 
     it('when invalid strategy then throws', async () => {
@@ -232,13 +209,6 @@ describe('parseValgrindStrategies', () => {
     it('when input provided then parses strategies', async () => {
         (core.getInput as jest.Mock).mockReturnValue('builder,system');
         await expect(parseValgrindStrategies()).resolves.toEqual(['builder', 'system']);
-    });
-
-    it('when input empty then uses default', async () => {
-        (core.getInput as jest.Mock).mockReturnValue('');
-        await expect(parseValgrindStrategies()).resolves.toEqual(
-            DEFAULT_VALGRIND_STRATEGY.split(',').map((s) => s.trim())
-        );
     });
 
     it('when invalid strategy then throws', async () => {

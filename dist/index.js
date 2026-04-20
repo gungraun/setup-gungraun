@@ -33162,7 +33162,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.DEFAULT_RUNNER_STRATEGY = exports.DEFAULT_VALGRIND_STRATEGY = exports.VALID_RUNNER_STRATEGIES = exports.VALID_VALGRIND_STRATEGIES = void 0;
+exports.VALID_RUNNER_STRATEGIES = exports.VALID_VALGRIND_STRATEGIES = void 0;
 exports.parseGithubToken = parseGithubToken;
 exports.parseInputs = parseInputs;
 exports.parseRunnerTarget = parseRunnerTarget;
@@ -33194,10 +33194,8 @@ exports.VALID_RUNNER_STRATEGIES = [
     'release',
     'source'
 ];
-exports.DEFAULT_VALGRIND_STRATEGY = 'builder,system,source';
-exports.DEFAULT_RUNNER_STRATEGY = 'binstall,release,source';
 async function parseGithubToken() {
-    return core.getInput('github-token') || process.env.GITHUB_TOKEN?.trim() || '';
+    return core.getInput('github-token') || '';
 }
 async function parseInputs() {
     const githubToken = await parseGithubToken();
@@ -33236,7 +33234,7 @@ async function parseRunnerTarget(isNoneStrategy) {
 }
 async function parseRunnerStrategies() {
     try {
-        return parseStrategies(core.getInput('runner-strategy') || exports.DEFAULT_RUNNER_STRATEGY, exports.VALID_RUNNER_STRATEGIES, 'runner');
+        return parseStrategies(core.getInput('runner-strategy'), exports.VALID_RUNNER_STRATEGIES, 'runner');
     }
     catch (error) {
         throw new Error(`Invalid runner-strategy: ${error.message}`);
@@ -33324,7 +33322,7 @@ async function parseValgrindMakeEnvs() {
 }
 async function parseValgrindStrategies() {
     try {
-        return parseStrategies(core.getInput('valgrind-strategy') || exports.DEFAULT_VALGRIND_STRATEGY, exports.VALID_VALGRIND_STRATEGIES, 'valgrind');
+        return parseStrategies(core.getInput('valgrind-strategy'), exports.VALID_VALGRIND_STRATEGIES, 'valgrind');
     }
     catch (error) {
         throw new Error(`Invalid valgrind-strategy: ${error.message}`);
@@ -33362,7 +33360,7 @@ async function parseValgrindVersion() {
     let valgrindVersionInput;
     let valgrindVersion;
     try {
-        valgrindVersionInput = core.getInput('valgrind-version') || 'latest';
+        valgrindVersionInput = core.getInput('valgrind-version') || 'auto';
         valgrindVersion = version_1.Version.fromString(valgrindVersionInput);
     }
     catch (error) {

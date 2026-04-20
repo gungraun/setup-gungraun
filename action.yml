@@ -9,7 +9,7 @@ inputs:
     description:
       'GitHub token for API requests (avoids rate limits on release downloads)'
     required: false
-    default: ''
+    default: '${{ github.token }}'
   install-build-deps:
     description:
       'Install build dependencies before building valgrind from source'
@@ -64,10 +64,10 @@ inputs:
     default: ''
   valgrind-version:
     description:
-      'Valgrind release tag (e.g. v0.1.1, latest) or auto which installs the
+      'Valgrind release tag (e.g. 3.22.0, latest) or auto which installs the
       latest possible version for the strategy'
     required: false
-    default: 'latest'
+    default: 'auto'
 
 runs:
   using: 'node24'
