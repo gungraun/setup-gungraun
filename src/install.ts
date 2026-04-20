@@ -17,6 +17,7 @@ import {
     resolveRunnerVersion
 } from './resolve';
 import {
+    execPrivileged,
     findBinary,
     getCargoBin,
     logInstalledVersion,
@@ -28,6 +29,7 @@ import {
 import { Version } from './version';
 import { RunnerStrategy, ValgrindStrategy } from './inputs';
 import { PackagesInstaller, FetchLatestPackageVersion } from './platform';
+import { quote } from 'shell-quote';
 
 export function getRunnerInstallDir(): { dir: string; needsExport: boolean } | null {
     if (process.env.CARGO_INSTALL_ROOT) {
@@ -78,17 +80,26 @@ export async function installRunner(
         switch (strategy) {
             case 'binstall': {
                 const result = await installRunnerWithBinstall(version, target);
-                if (result) return;
+                if (result) {
+                    await logInstalledVersion('gungraun-runner', 'gungraun-runner');
+                    return;
+                }
                 break;
             }
             case 'release': {
                 const result = await installRunnerFromRelease(version, githubToken, target);
-                if (result) return;
+                if (result) {
+                    await logInstalledVersion('gungraun-runner', 'gungraun-runner');
+                    return;
+                }
                 break;
             }
             case 'source': {
                 const result = await installRunnerFromSource(version);
-                if (result) return;
+                if (result) {
+                    await logInstalledVersion('gungraun-runner', 'gungraun-runner');
+                    return;
+                }
                 break;
             }
             case 'none': {
@@ -140,14 +151,11 @@ export async function installRunnerFromRelease(
 
             if (needsExport) {
                 core.addPath(installDir);
+
+                process.env.PATH = `${installDir}${path.delimiter}${process.env.PATH}`;
+
                 core.exportVariable('GUNGRAUN_RUNNER', path.join(installDir, 'gungraun-runner'));
             }
-
-            await logInstalledVersion(
-                path.join(installDir, 'gungraun-runner'),
-                'gungraun-runner',
-                `gungraun-runner ${resolvedVersion}`
-            );
 
             return true;
         } catch (error) {
@@ -173,12 +181,6 @@ export async function installRunnerFromSource(version: Version, target?: string)
             }
 
             await exec.exec(getCargoBin(), args);
-
-            await logInstalledVersion(
-                'gungraun-runner',
-                'gungraun-runner',
-                `gungraun-runner ${version}`
-            );
 
             return true;
         } catch (error) {
@@ -214,15 +216,6 @@ export async function installRunnerWithBinstall(
 
             await exec.exec(getCargoBin(), args);
 
-            const runnerPath = await io.which('gungraun-runner', false);
-            if (runnerPath) {
-                await logInstalledVersion(
-                    'gungraun-runner',
-                    'gungraun-runner',
-                    `gungraun-runner ${version}`
-                );
-            }
-
             return true;
         } catch (error) {
             printError(
@@ -240,8 +233,10 @@ export async function installValgrind(
     strategies: ValgrindStrategy[],
     installBuildDeps: boolean = false,
     githubToken: string,
-    valgrindUrl: string,
-    valgrindShaUrl: string
+    valgrindUrl?: URL,
+    valgrindShaUrl?: URL,
+    configureArgs: string[] = [],
+    makeEnvs: Map<string, string> = new Map()
 ): Promise<void> {
     for (const strategy of strategies) {
         switch (strategy) {
@@ -252,20 +247,31 @@ export async function installValgrind(
                     valgrindUrl,
                     valgrindShaUrl
                 );
-                if (result) return;
+                if (result) {
+                    await logInstalledVersion('valgrind', 'valgrind');
+                    return;
+                }
                 break;
             }
             case 'system': {
                 const result = await installValgrindWithPackageManager(version);
-                if (result) return;
+                if (result) {
+                    await logInstalledVersion('valgrind', 'valgrind');
+                    return;
+                }
                 break;
             }
             case 'source': {
                 const result = await installValgrindFromSource(
                     version.isAuto() ? Version.latest() : version,
-                    installBuildDeps
+                    installBuildDeps,
+                    configureArgs,
+                    makeEnvs
                 );
-                if (result) return;
+                if (result) {
+                    await logInstalledVersion('valgrind', 'valgrind');
+                    return;
+                }
                 break;
             }
             case 'none': {
@@ -287,14 +293,14 @@ export async function installValgrind(
 export async function installValgrindFromBuilder(
     version: Version,
     githubToken: string,
-    valgrindUrl: string,
-    valgrindShaUrl: string
+    valgrindUrl?: URL,
+    valgrindShaUrl?: URL
 ): Promise<boolean> {
     return withGroup('Installing valgrind from builder', async () => {
         try {
             let extractDir: string;
             if (valgrindUrl) {
-                printInfo(`Downloading valgrind archive from url '${valgrindUrl}'`);
+                printInfo(`Downloading Valgrind archive from url '${valgrindUrl}'`);
 
                 const { extractDir: dir } = await downloadAndExtractValgrindUrl(
                     valgrindUrl,
@@ -315,7 +321,7 @@ export async function installValgrindFromBuilder(
                 );
                 if (!result) {
                     printError(
-                        `No valgrind builder release found for valgrind version ${version} \
+                        `No Valgrind builder release found for Valgrind version ${version} \
 (${arch}-${platform})`
                     );
                     return false;
@@ -323,7 +329,7 @@ export async function installValgrindFromBuilder(
 
                 const { name } = result;
 
-                printInfo(`Downloading valgrind builder archive '${name}'`);
+                printInfo(`Downloading Valgrind builder archive '${name}'`);
                 // This is not the valgrind version. We always use the latest version of the builder
                 // release and extract the archive attached to the latest release with the given
                 // `name`.
@@ -331,16 +337,13 @@ export async function installValgrindFromBuilder(
             }
 
             const entries = await fs.promises.readdir(extractDir);
-            await exec.exec('sudo', [
-                'cp',
+            await execPrivileged('cp', [
                 '-a',
                 ...entries.map((e) => path.join(extractDir, e)),
                 '/'
             ]);
-
-            await logInstalledVersion('valgrind', 'valgrind');
         } catch (error) {
-            printError(`Failed to install valgrind from release: ${(error as Error).message}`);
+            printError(`Failed to install Valgrind from release: ${(error as Error).message}`);
 
             return false;
         }
@@ -356,7 +359,7 @@ export async function installValgrindWithPackageManager(version: Version): Promi
         const { packageManager } = await detectPlatform();
 
         if (!packageManager) {
-            printError(`Cannot install valgrind: No package manager detected for this platform`);
+            printError(`Cannot install Valgrind: No package manager detected for this platform`);
 
             return false;
         }
@@ -390,8 +393,6 @@ export async function installValgrindWithPackageManager(version: Version): Promi
                 new PackagesInstaller('valgrind', ...packageManager.getDebugInfoPackages())
             );
 
-            await logInstalledVersion('valgrind', 'valgrind');
-
             return true;
         } catch (error) {
             printError(
@@ -405,35 +406,36 @@ export async function installValgrindWithPackageManager(version: Version): Promi
 
 /** Installs build dependencies required to compile valgrind from source. */
 export async function installValgrindBuildDeps(): Promise<boolean> {
-    return withGroup('Installing valgrind build dependencies', async () => {
-        const { packageManager } = await detectPlatform();
+    const { packageManager } = await detectPlatform();
 
-        if (!packageManager) {
-            printError(`Cannot install build dependencies: unsupported package manager`);
-            return false;
-        }
+    if (!packageManager) {
+        printError(`Cannot install build dependencies: unsupported package manager`);
+        return false;
+    }
 
-        try {
-            const packages = packageManager.getValgrindBuildDeps();
-            await packageManager.accept(new PackagesInstaller(...packages));
-            printInfo(`Installed build dependencies: ${packages.join(', ')}`);
+    try {
+        const packages = packageManager.getValgrindBuildDeps();
+        await packageManager.accept(new PackagesInstaller(...packages));
+        printInfo(`Installed build dependencies: ${packages.join(', ')}`);
 
-            return true;
-        } catch (error) {
-            printError(`Failed to install build dependencies: ${(error as Error).message}`);
+        return true;
+    } catch (error) {
+        printError(`Failed to install build dependencies: ${(error as Error).message}`);
 
-            return false;
-        }
-    });
+        return false;
+    }
 }
 
 /** Installs valgrind from the source tarball. */
 export async function installValgrindFromSource(
     version: Version,
-    installBuildDeps: boolean = false
+    installBuildDeps: boolean = false,
+    configureArgs: string[] = [],
+    makeEnvs: Map<string, string> = new Map()
 ): Promise<boolean> {
     return withGroup('Installing valgrind from source', async () => {
         try {
+            const { id } = await detectPlatform();
             const resolvedVersion = await resolveValgrindVersion(version);
 
             if (installBuildDeps) {
@@ -447,15 +449,39 @@ export async function installValgrindFromSource(
             const extractDir = await downloadAndExtractValgrindSource(resolvedVersion);
             const sourceDir = path.join(extractDir, `valgrind-${resolvedVersion}`);
 
-            await exec.exec('./configure', ['--prefix=/usr'], { cwd: sourceDir });
+            const execOpts: exec.ExecOptions = { cwd: sourceDir };
+            const args = ['--prefix=/usr'];
+
+            // based on the APKBUILD:
+            // https://gitlab.alpinelinux.org/alpine/aports/-/blob/68861fc5eb9fcc485c720fdf743272b41cbc313b/main/valgrind/APKBUILD
+            if (id === 'alpine') {
+                execOpts.env = {
+                    CFLAGS: '-fno-stack-protector -no-pie -U_FORTIFY_SOURCE',
+                    ...(process.env as Record<string, string>),
+                    ...Object.fromEntries(makeEnvs)
+                };
+                args.push('--without-mpicc');
+            } else {
+                execOpts.env = {
+                    ...(process.env as Record<string, string>),
+                    ...Object.fromEntries(makeEnvs)
+                };
+            }
+            args.push(...configureArgs);
+
+            printInfo(`:: Running: ./configure ${quote(args)}`);
+            await exec.exec('./configure', args, execOpts);
 
             const ncpus = os.cpus().length;
-            await exec.exec('make', [`-j${ncpus}`, 'BUILD_DOCS=none'], { cwd: sourceDir });
-            await exec.exec('sudo', ['make', 'install'], { cwd: sourceDir });
+            const makeArgs = [`-j${ncpus}`, 'BUILD_DOCS=none'];
 
-            await logInstalledVersion('valgrind', 'valgrind', `valgrind-${resolvedVersion}`);
+            printInfo(`:: Running: make ${quote(args)}`);
+            await exec.exec('make', makeArgs, { ...execOpts });
+
+            printInfo(`:: Running: make install`);
+            await execPrivileged('make', ['install'], { cwd: sourceDir });
         } catch (error) {
-            printError(`Failed to install valgrind from source: ${(error as Error).message}`);
+            printError(`Failed to install Valgrind from source: ${(error as Error).message}`);
             return false;
         }
 

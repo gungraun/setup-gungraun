@@ -2,14 +2,14 @@ import * as core from '@actions/core';
 import { detectProjectVersion, detectTarget } from '../src/detect';
 import { fetchRunnerVersions, fetchSortedValgrindVersions } from '../src/resolve';
 import {
-    DEFAULT_RUNNER_STRATEGY,
-    DEFAULT_VALGRIND_STRATEGY,
     parseGithubToken,
     parseInstallBuildDeps,
     parseRunnerStrategies,
     parseRunnerTarget,
     parseRunnerVersion,
     parseStrategies,
+    parseValgrindConfigureArgs,
+    parseValgrindMakeEnvs,
     parseValgrindShaUrl,
     parseValgrindStrategies,
     parseValgrindUrl,
@@ -95,23 +95,9 @@ describe('parseGithubToken', () => {
         await expect(parseGithubToken()).resolves.toBe('token-from-input');
     });
 
-    it('when core input empty then falls back to env var', async () => {
+    it('when core input empty then returns empty string', async () => {
         (core.getInput as jest.Mock).mockReturnValue('');
-        jest.replaceProperty(process, 'env', { ...process.env, GITHUB_TOKEN: 'env-token' });
-        await expect(parseGithubToken()).resolves.toBe('env-token');
-    });
-
-    it('when neither available then returns empty string', async () => {
-        (core.getInput as jest.Mock).mockReturnValue('');
-        jest.replaceProperty(process, 'env', { ...process.env });
-        delete process.env.GITHUB_TOKEN;
         await expect(parseGithubToken()).resolves.toBe('');
-    });
-
-    it('when env var has whitespace then trims', async () => {
-        (core.getInput as jest.Mock).mockReturnValue('');
-        jest.replaceProperty(process, 'env', { ...process.env, GITHUB_TOKEN: '  token  ' });
-        await expect(parseGithubToken()).resolves.toBe('token');
     });
 });
 
@@ -138,13 +124,6 @@ describe('parseRunnerStrategies', () => {
     it('when input provided then parses strategies', async () => {
         (core.getInput as jest.Mock).mockReturnValue('binstall,release');
         await expect(parseRunnerStrategies()).resolves.toEqual(['binstall', 'release']);
-    });
-
-    it('when input empty then uses default', async () => {
-        (core.getInput as jest.Mock).mockReturnValue('');
-        await expect(parseRunnerStrategies()).resolves.toEqual(
-            DEFAULT_RUNNER_STRATEGY.split(',').map((s) => s.trim())
-        );
     });
 
     it('when invalid strategy then throws', async () => {
@@ -232,13 +211,6 @@ describe('parseValgrindStrategies', () => {
         await expect(parseValgrindStrategies()).resolves.toEqual(['builder', 'system']);
     });
 
-    it('when input empty then uses default', async () => {
-        (core.getInput as jest.Mock).mockReturnValue('');
-        await expect(parseValgrindStrategies()).resolves.toEqual(
-            DEFAULT_VALGRIND_STRATEGY.split(',').map((s) => s.trim())
-        );
-    });
-
     it('when invalid strategy then throws', async () => {
         (core.getInput as jest.Mock).mockReturnValue('invalid');
         await expect(parseValgrindStrategies()).rejects.toThrow('Invalid valgrind-strategy:');
@@ -248,26 +220,38 @@ describe('parseValgrindStrategies', () => {
 describe('parseValgrindUrl', () => {
     it('when input provided then returns it', async () => {
         (core.getInput as jest.Mock).mockReturnValue('https://example.com/valgrind.tar.gz');
-        await expect(parseValgrindUrl()).resolves.toBe('https://example.com/valgrind.tar.gz');
+        await expect(parseValgrindUrl()).resolves.toEqual(
+            new URL('https://example.com/valgrind.tar.gz')
+        );
     });
 
-    it('when input empty then returns empty string', async () => {
+    it('when input empty then throws', async () => {
         (core.getInput as jest.Mock).mockReturnValue('');
-        await expect(parseValgrindUrl()).resolves.toBe('');
+        await expect(parseValgrindUrl()).resolves.toBeUndefined();
+    });
+
+    it('when invalid url then throws', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('https////missing.colon.com');
+        await expect(parseValgrindUrl()).rejects.toThrow('Invalid valgrind-url:');
     });
 });
 
 describe('parseValgrindShaUrl', () => {
     it('when input provided then returns it', async () => {
         (core.getInput as jest.Mock).mockReturnValue('https://example.com/valgrind.tar.gz.sha256');
-        await expect(parseValgrindShaUrl()).resolves.toBe(
-            'https://example.com/valgrind.tar.gz.sha256'
+        await expect(parseValgrindShaUrl()).resolves.toEqual(
+            new URL('https://example.com/valgrind.tar.gz.sha256')
         );
     });
 
-    it('when input empty then returns empty string', async () => {
+    it('when input empty then throws', async () => {
         (core.getInput as jest.Mock).mockReturnValue('');
-        await expect(parseValgrindShaUrl()).resolves.toBe('');
+        await expect(parseValgrindShaUrl()).resolves.toBeUndefined();
+    });
+
+    it('when invalid url then throws', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('https////missing.colon.com');
+        await expect(parseValgrindShaUrl()).rejects.toThrow('Invalid valgrind-sha-url:');
     });
 });
 
@@ -315,7 +299,7 @@ describe('parseValgrindVersion', () => {
         (core.getInput as jest.Mock).mockReturnValue('3.22.0');
         (fetchSortedValgrindVersions as jest.Mock).mockRejectedValue(new Error('network error'));
 
-        await expect(parseValgrindVersion()).rejects.toThrow('Failed to validate valgrind version');
+        await expect(parseValgrindVersion()).rejects.toThrow('Failed to validate Valgrind version');
     });
 
     it('when version has major < 3 then filtered out and throws', async () => {
@@ -348,5 +332,106 @@ describe('parseInstallBuildDeps', () => {
     it('when input is false then returns false', async () => {
         (core.getBooleanInput as jest.Mock).mockReturnValue(false);
         await expect(parseInstallBuildDeps()).resolves.toBe(false);
+    });
+});
+
+describe('parseValgrindConfigureArgs', () => {
+    it('when input empty then returns empty array', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('');
+        await expect(parseValgrindConfigureArgs()).resolves.toEqual([]);
+    });
+
+    it('when input is whitespace only then returns empty array', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('  \n  ');
+        await expect(parseValgrindConfigureArgs()).resolves.toEqual([]);
+    });
+
+    it('when simple unquoted args then splits on whitespace', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('--without-mpicc --enable-only64bit');
+        await expect(parseValgrindConfigureArgs()).resolves.toEqual([
+            '--without-mpicc',
+            '--enable-only64bit'
+        ]);
+    });
+
+    it('when double-quoted arg then preserves as single token', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('--flags="-fno-stack-protector -no-pie"');
+        await expect(parseValgrindConfigureArgs()).resolves.toEqual([
+            '--flags=-fno-stack-protector -no-pie'
+        ]);
+    });
+
+    it('when single-quoted arg then preserves as single token', async () => {
+        (core.getInput as jest.Mock).mockReturnValue("--flags='-fno-stack-protector -no-pie'");
+        await expect(parseValgrindConfigureArgs()).resolves.toEqual([
+            '--flags=-fno-stack-protector -no-pie'
+        ]);
+    });
+
+    it('when mixed quoted and unquoted then parses correctly', async () => {
+        (core.getInput as jest.Mock).mockReturnValue(
+            '--without-mpicc --flags="-fno-stack-protector -no-pie" --enable-only64bit'
+        );
+        await expect(parseValgrindConfigureArgs()).resolves.toEqual([
+            '--without-mpicc',
+            '--flags=-fno-stack-protector -no-pie',
+            '--enable-only64bit'
+        ]);
+    });
+
+    it('when invalid token then throws', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('--without-mpicc || true');
+        await expect(parseValgrindConfigureArgs()).rejects.toThrow(
+            'Invalid valgrind-configure-args:'
+        );
+    });
+});
+
+describe('parseValgrindMakeEnvs', () => {
+    it('when input empty then returns empty Map', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('');
+        const result = await parseValgrindMakeEnvs();
+        expect(result.size).toBe(0);
+    });
+
+    it('when input is whitespace only then returns empty Map', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('  \n  ');
+        const result = await parseValgrindMakeEnvs();
+        expect(result.size).toBe(0);
+    });
+
+    it('when simple KEY=VALUE then parses correctly', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('CFLAGS=-O0');
+        const result = await parseValgrindMakeEnvs();
+        expect(Object.fromEntries(result)).toEqual({ CFLAGS: '-O0' });
+    });
+
+    it('when multiple env vars then parses all', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('CFLAGS="-O0 -g" LDFLAGS=-static');
+        const result = await parseValgrindMakeEnvs();
+        expect(Object.fromEntries(result)).toEqual({ CFLAGS: '-O0 -g', LDFLAGS: '-static' });
+    });
+
+    it('when duplicate keys then last value wins', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('FOO=bar FOO=baz');
+        const result = await parseValgrindMakeEnvs();
+        expect(Object.fromEntries(result)).toEqual({ FOO: 'baz' });
+    });
+
+    it('when value contains equals then splits on first equals only', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('FOO=a=b');
+        const result = await parseValgrindMakeEnvs();
+        expect(Object.fromEntries(result)).toEqual({ FOO: 'a=b' });
+    });
+
+    it('when key without value then sets empty string', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('VERBOSE');
+        const result = await parseValgrindMakeEnvs();
+        expect(Object.fromEntries(result)).toEqual({ VERBOSE: '' });
+    });
+
+    it('when invalid token then throws', async () => {
+        (core.getInput as jest.Mock).mockReturnValue('CFLAGS=-O0 || true');
+        await expect(parseValgrindMakeEnvs()).rejects.toThrow('Invalid valgrind-make-envs:');
     });
 });

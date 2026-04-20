@@ -9,8 +9,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group:
-    ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -100,7 +99,7 @@ jobs:
       - name: Verify gungraun-runner
         run: gungraun-runner --version
 
-  test-valgrind:
+  test-basic-valgrind:
     needs: [format-and-lint, build]
     runs-on: ubuntu-latest
     strategy:
@@ -114,12 +113,19 @@ jobs:
           - valgrind-strategy: builder
             install-build-deps: false
             valgrind-version: auto
+          - valgrind-strategy: builder
+            install-build-deps: false
+            valgrind-version: 3.25.0
+          - valgrind-strategy: system
+            install-build-deps: false
+            valgrind-version: latest
           - valgrind-strategy: system
             install-build-deps: false
             valgrind-version: auto
-          # This tests that the latest system valgrind version is installed. The
+          # This tests that the latest system valgrind version is installed when
+          # the exact valgrind version is the input of for valgrind-version. The
           # valgrind-version input is computed dynamically in the
-          # set_valgrind_version step
+          # set_valgrind_version step.
           - valgrind-strategy: system
             install-build-deps: false
             valgrind-version: ''
@@ -129,6 +135,9 @@ jobs:
           - valgrind-strategy: source
             install-build-deps: true
             valgrind-version: auto
+          - valgrind-strategy: source
+            install-build-deps: true
+            valgrind-version: 3.20.0
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -137,13 +146,24 @@ jobs:
         id: set_valgrind_version
         run: |
           if [[ "${{ matrix.valgrind-strategy }}" == "system" && -z "${{ matrix.valgrind-version }}" ]]; then
-            valgrind_version=$(./scripts/system-valgrind-version.sh)
-            echo "version=${valgrind_version}" >> $GITHUB_OUTPUT
+            valgrind_version="$(./scripts/system-valgrind-version.sh)"
+            echo "version=${valgrind_version}" >> "$GITHUB_OUTPUT"
           else
-            echo "version=${{ matrix.valgrind-version }}" >> $GITHUB_OUTPUT
+            echo "version=${{ matrix.valgrind-version }}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Detect the expected valgrind version
+        id: get_valgrind_version
+        run: |
+          version="$(./scripts/expected-valgrind-version.sh "${{ matrix.valgrind-strategy }}" "${{ matrix.valgrind-version }}")"
+          echo "expected_version=${version}" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # GUNGRAUN_ACTION_DEBUG: yes
+
       - name: Run action
+        id: action
+        continue-on-error: true
         uses: ./
         with:
           runner-strategy: none
@@ -151,6 +171,208 @@ jobs:
           valgrind-version: ${{ steps.set_valgrind_version.outputs.version }}
           install-build-deps: ${{ matrix.install-build-deps }}
           github-token: ${{ github.token }}
+        # env:
+        #   GUNGRAUN_ACTION_DEBUG: yes
+
+      - name: Verify valgrind on failure
+        if: steps.action.outcome == 'failure'
+        run: |
+          expected_version="${{ steps.get_valgrind_version.outputs.expected_version }}"
+
+          if [[ "$expected_version" == "none" ]]; then
+            echo "The installation of valgrind failed as expected"
+            exit 0
+          else
+            echo "Expected that the action succeeds but it failed. Expected versions was '${expected_version}'" >&2
+            exit 1
+          fi
+
+      - name: Verify valgrind on success
+        if: steps.action.outcome == 'success'
+        run: |
+          expected_version="${{ steps.get_valgrind_version.outputs.expected_version }}"
+
+          if [[ "$expected_version" == "none" ]]; then
+            echo "Expected the action to fail but it succeeded" >&2
+            exit 1
+          else
+            actual_version="$(valgrind --version)"
+            if [[ "$actual_version" != "valgrind-${expected_version}" ]]; then
+              echo "Mismatch between expected valgrind version 'valgrind-${expected_version}' and actual version '${actual_version}" >&2
+              exit 1
+            else
+              echo "Successfully installed valgrind: $actual_version"
+
+              set -x
+              # To verify the default gungraun tool is running
+              valgrind --tool=callgrind ls -la
+              # To verify the debug symbol installation for libc is working
+              valgrind --tool=memcheck ls -la
+
+              exit 0
+            fi
+          fi
+
+  test-valgrind-platforms:
+    needs: [format-and-lint, build]
+    runs-on: ubuntu-latest
+    container: ${{ matrix.container-image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        strategy: ['system', 'source']
+        container-image:
+          # apt
+          - debian:bookworm-slim
+          - debian:trixie-slim
+          - ubuntu:22.04
+          - ubuntu:24.04
+          - ubuntu:26.04
+          # dnf/yum
+          - almalinux:9
+          - almalinux:9-minimal
+          - almalinux:10
+          - almalinux:10-minimal
+          - amazonlinux:latest
+          - fedora:latest
+          # apk
+          - alpine:3.22
+          - alpine:3.23
+          # pacman
+          - archlinux:latest
+          # zypper
+          - opensuse/leap:latest
+          - opensuse/tumbleweed:latest
+        include:
+          - install-build-deps: false
+          - strategy: source
+            install-build-deps: true
+    steps:
+      - name: Installs prerequisites
+        shell: sh
+        run: |
+          image="${{ matrix.container-image }}"
+
+          case "$image" in
+          ubuntu:* | debian:*)
+            apt-get update
+            apt-get install -y --no-install-recommends git ca-certificates
+            ;;
+          almalinux:*-minimal)
+            microdnf install -y tar git
+            ;;
+          almalinux:* | fedora* | amazonlinux*)
+            dnf install -y tar git
+            ;;
+          opensuse*)
+            zypper --non-interactive install tar gzip awk git
+            ;;
+          alpine*)
+            apk add git
+            ;;
+          archlinux*)
+            pacman -Sy --noconfirm git
+            ;;
+          *) ;;
+          esac
+
+      - uses: actions/checkout@v6
+      - name: Detect the expected valgrind version
+        shell: sh
+        id: get_valgrind_version
+        run: |
+          version="$(./scripts/expected-valgrind-version.sh \
+                   "${{ matrix.strategy }}" "auto")"
+          if [ "$version" = "none" ]; then
+            echo "Error in action tests: The version should not be none"
+            exit 1
+          else
+            echo "Detected version: '${version}'"
+            echo "expected_version=${version}" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # GUNGRAUN_ACTION_DEBUG: yes
+
+      - name: Run action
+        uses: ./
+        with:
+          runner-strategy: none
+          valgrind-strategy: ${{ matrix.strategy }}
+          valgrind-version: auto
+          install-build-deps: ${{ matrix.install-build-deps }}
+        # env:
+        #   GUNGRAUN_ACTION_DEBUG: yes
 
       - name: Verify valgrind
-        run: valgrind --version
+        shell: sh
+        run: |
+          expected_version="${{ steps.get_valgrind_version.outputs.expected_version }}"
+
+          if [ "$expected_version" = "none" ]; then
+            echo "Expected the action to fail but it succeeded" >&2
+            exit 1
+          else
+            actual_version="$(valgrind --version)"
+            if [ "$actual_version" != "valgrind-${expected_version}" ]; then
+              echo "Mismatch between expected valgrind version \
+                    'valgrind-${expected_version}' and actual version \
+                    '${actual_version}" >&2
+              exit 1
+            else
+              echo "Successfully installed valgrind: $actual_version"
+
+              set -x
+              # To verify the default gungraun tool is running
+              valgrind --tool=callgrind ls -la
+              # To verify the debug symbol installation for libc is working
+              valgrind --tool=memcheck ls -la
+
+              exit 0
+            fi
+          fi
+
+  test-valgrind-url:
+    needs: [format-and-lint, build]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        valgrind-version:
+          - latest
+          - auto
+          - 3.24.0
+        include:
+          - expected-version: 3.25.0
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run action
+        uses: ./
+        with:
+          runner-strategy: none
+          valgrind-strategy: builder
+          valgrind-url: https://github.com/gungraun/valgrind-builder/releases/download/v0.1.1/valgrind-3.25.0-x86_64-ubuntu-24.04.tar.gz
+          valgrind-sha-url: https://github.com/gungraun/valgrind-builder/releases/download/v0.1.1/valgrind-3.25.0-x86_64-ubuntu-24.04.tar.gz.sha256
+          github-token: ${{ github.token }}
+
+      - name: Verify installation
+        run: |
+          actual_version="$(valgrind --version)"
+          expected_version="valgrind-${{ matrix.expected-version }}"
+
+          if [[ "$actual_version" != "${expected_version}" ]]; then
+            echo "Mismatch between expected valgrind version '${expected_version}' and actual version '${actual_version}" >&2
+            exit 1
+          else
+            echo "Successfully installed valgrind: $actual_version"
+
+            set -x
+            # To verify the default gungraun tool is running
+            valgrind --tool=callgrind ls -la
+            # To verify the debug symbol installation for libc is working
+            valgrind --tool=memcheck ls -la
+
+            exit 0
+          fi

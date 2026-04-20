@@ -9961,6 +9961,279 @@ function coerce (version, options) {
 
 /***/ }),
 
+/***/ 6591:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+exports.quote = __nccwpck_require__(5335);
+exports.parse = __nccwpck_require__(2696);
+
+
+/***/ }),
+
+/***/ 2696:
+/***/ ((module) => {
+
+"use strict";
+
+
+// '<(' is process substitution operator and
+// can be parsed the same as control operator
+var CONTROL = '(?:' + [
+	'\\|\\|',
+	'\\&\\&',
+	';;',
+	'\\|\\&',
+	'\\<\\(',
+	'\\<\\<\\<',
+	'>>',
+	'>\\&',
+	'<\\&',
+	'[&;()|<>]'
+].join('|') + ')';
+var controlRE = new RegExp('^' + CONTROL + '$');
+var META = '|&;()<> \\t';
+var SINGLE_QUOTE = '"((\\\\"|[^"])*?)"';
+var DOUBLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
+var hash = /^#$/;
+
+var SQ = "'";
+var DQ = '"';
+var DS = '$';
+
+var TOKEN = '';
+var mult = 0x100000000; // Math.pow(16, 8);
+for (var i = 0; i < 4; i++) {
+	TOKEN += (mult * Math.random()).toString(16);
+}
+var startsWithToken = new RegExp('^' + TOKEN);
+
+function matchAll(s, r) {
+	var origIndex = r.lastIndex;
+
+	var matches = [];
+	var matchObj;
+
+	while ((matchObj = r.exec(s))) {
+		matches.push(matchObj);
+		if (r.lastIndex === matchObj.index) {
+			r.lastIndex += 1;
+		}
+	}
+
+	r.lastIndex = origIndex;
+
+	return matches;
+}
+
+function getVar(env, pre, key) {
+	var r = typeof env === 'function' ? env(key) : env[key];
+	if (typeof r === 'undefined' && key != '') {
+		r = '';
+	} else if (typeof r === 'undefined') {
+		r = '$';
+	}
+
+	if (typeof r === 'object') {
+		return pre + TOKEN + JSON.stringify(r) + TOKEN;
+	}
+	return pre + r;
+}
+
+function parseInternal(string, env, opts) {
+	if (!opts) {
+		opts = {};
+	}
+	var BS = opts.escape || '\\';
+	var BAREWORD = '(\\' + BS + '[\'"' + META + ']|[^\\s\'"' + META + '])+';
+
+	var chunker = new RegExp([
+		'(' + CONTROL + ')', // control chars
+		'(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')+'
+	].join('|'), 'g');
+
+	var matches = matchAll(string, chunker);
+
+	if (matches.length === 0) {
+		return [];
+	}
+	if (!env) {
+		env = {};
+	}
+
+	var commented = false;
+
+	return matches.map(function (match) {
+		var s = match[0];
+		if (!s || commented) {
+			return void undefined;
+		}
+		if (controlRE.test(s)) {
+			return { op: s };
+		}
+
+		// Hand-written scanner/parser for Bash quoting rules:
+		//
+		// 1. inside single quotes, all characters are printed literally.
+		// 2. inside double quotes, all characters are printed literally
+		//    except variables prefixed by '$' and backslashes followed by
+		//    either a double quote or another backslash.
+		// 3. outside of any quotes, backslashes are treated as escape
+		//    characters and not printed (unless they are themselves escaped)
+		// 4. quote context can switch mid-token if there is no whitespace
+		//     between the two quote contexts (e.g. all'one'"token" parses as
+		//     "allonetoken")
+		var quote = false;
+		var esc = false;
+		var out = '';
+		var isGlob = false;
+		var i;
+
+		function parseEnvVar() {
+			i += 1;
+			var varend;
+			var varname;
+			var char = s.charAt(i);
+
+			if (char === '{') {
+				i += 1;
+				if (s.charAt(i) === '}') {
+					throw new Error('Bad substitution: ' + s.slice(i - 2, i + 1));
+				}
+				varend = s.indexOf('}', i);
+				if (varend < 0) {
+					throw new Error('Bad substitution: ' + s.slice(i));
+				}
+				varname = s.slice(i, varend);
+				i = varend;
+			} else if ((/[*@#?$!_-]/).test(char)) {
+				varname = char;
+				i += 1;
+			} else {
+				var slicedFromI = s.slice(i);
+				varend = slicedFromI.match(/[^\w\d_]/);
+				if (!varend) {
+					varname = slicedFromI;
+					i = s.length;
+				} else {
+					varname = slicedFromI.slice(0, varend.index);
+					i += varend.index - 1;
+				}
+			}
+			return getVar(env, '', varname);
+		}
+
+		for (i = 0; i < s.length; i++) {
+			var c = s.charAt(i);
+			isGlob = isGlob || (!quote && (c === '*' || c === '?'));
+			if (esc) {
+				out += c;
+				esc = false;
+			} else if (quote) {
+				if (c === quote) {
+					quote = false;
+				} else if (quote == SQ) {
+					out += c;
+				} else { // Double quote
+					if (c === BS) {
+						i += 1;
+						c = s.charAt(i);
+						if (c === DQ || c === BS || c === DS) {
+							out += c;
+						} else {
+							out += BS + c;
+						}
+					} else if (c === DS) {
+						out += parseEnvVar();
+					} else {
+						out += c;
+					}
+				}
+			} else if (c === DQ || c === SQ) {
+				quote = c;
+			} else if (controlRE.test(c)) {
+				return { op: s };
+			} else if (hash.test(c)) {
+				commented = true;
+				var commentObj = { comment: string.slice(match.index + i + 1) };
+				if (out.length) {
+					return [out, commentObj];
+				}
+				return [commentObj];
+			} else if (c === BS) {
+				esc = true;
+			} else if (c === DS) {
+				out += parseEnvVar();
+			} else {
+				out += c;
+			}
+		}
+
+		if (isGlob) {
+			return { op: 'glob', pattern: out };
+		}
+
+		return out;
+	}).reduce(function (prev, arg) { // finalize parsed arguments
+		// TODO: replace this whole reduce with a concat
+		return typeof arg === 'undefined' ? prev : prev.concat(arg);
+	}, []);
+}
+
+module.exports = function parse(s, env, opts) {
+	var mapped = parseInternal(s, env, opts);
+	if (typeof env !== 'function') {
+		return mapped;
+	}
+	return mapped.reduce(function (acc, s) {
+		if (typeof s === 'object') {
+			return acc.concat(s);
+		}
+		var xs = s.split(RegExp('(' + TOKEN + '.*?' + TOKEN + ')', 'g'));
+		if (xs.length === 1) {
+			return acc.concat(xs[0]);
+		}
+		return acc.concat(xs.filter(Boolean).map(function (x) {
+			if (startsWithToken.test(x)) {
+				return JSON.parse(x.split(TOKEN)[1]);
+			}
+			return x;
+		}));
+	}, []);
+};
+
+
+/***/ }),
+
+/***/ 5335:
+/***/ ((module) => {
+
+"use strict";
+
+
+module.exports = function quote(xs) {
+	return xs.map(function (s) {
+		if (s === '') {
+			return '\'\'';
+		}
+		if (s && typeof s === 'object') {
+			return s.op.replace(/(.)/g, '\\$1');
+		}
+		if ((/["\s\\]/).test(s) && !(/'/).test(s)) {
+			return "'" + s.replace(/(['])/g, '\\$1') + "'";
+		}
+		if ((/["'\s]/).test(s)) {
+			return '"' + s.replace(/(["\\$`!])/g, '\\$1') + '"';
+		}
+		return String(s).replace(/([A-Za-z]:)?([#!"$&'()*,:;<=>?@[\\\]^`{|}])/g, '$1\\$2');
+	}).join(' ');
+};
+
+
+/***/ }),
+
 /***/ 770:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -32582,15 +32855,16 @@ async function detectPlatform() {
     const versionId = versionMatch ? versionMatch[1].trim() : null;
     const idLikeMatch = content.match(/^ID_LIKE="?(.+?)"?$/m);
     const idLike = idLikeMatch ? idLikeMatch[1].trim() : null;
+    const relatedIds = idLike?.split(' ') ?? [];
     const packageManager = resolvePackageManager(id, idLike);
     const platform = versionId ? `${id}-${versionId}` : `${id}-unknown`;
-    return { id, versionId, platform, packageManager };
+    return { id, relatedIds, versionId, platform, packageManager };
 }
 /** Detects the gungraun-runner version from the project's cargo metadata or pkgid. */
 async function detectProjectVersion() {
     let metadataStdout = null;
     try {
-        const { stdout } = await exec.getExecOutput((0, utils_1.getCargoBin)(), ['metadata', '--format-version=1'], { silent: true, ignoreReturnCode: true });
+        const { stdout } = await exec.getExecOutput((0, utils_1.getCargoBin)(), ['metadata', '--format-version=1'], { silent: !(0, utils_1.isDebug)(), ignoreReturnCode: true });
         metadataStdout = stdout;
     }
     catch {
@@ -32610,12 +32884,13 @@ async function detectProjectVersion() {
         }
         if (pkgs && pkgs.length > 1) {
             const versions = pkgs.map((p) => p.version).join(', ');
-            throw new Error(`Multiple gungraun versions detected in project (${versions}). Set runner-version explicitly.`);
+            throw new Error(`Multiple gungraun versions detected in project (${versions}). Set runner-version \
+explicitly.`);
         }
     }
     try {
         const { stdout } = await exec.getExecOutput((0, utils_1.getCargoBin)(), ['pkgid', 'gungraun'], {
-            silent: true,
+            silent: !(0, utils_1.isDebug)(),
             ignoreReturnCode: true
         });
         return version_1.ResolvedVersion.fromString(stdout);
@@ -32628,7 +32903,7 @@ async function detectProjectVersion() {
 /** Detects the Rust compiler target triple */
 async function detectTarget() {
     const { stdout } = await exec.getExecOutput('rustc', ['-vV'], {
-        silent: true
+        silent: !(0, utils_1.isDebug)()
     });
     const match = stdout.match(/^host:\s*(.+)$/m);
     if (!match) {
@@ -32724,11 +32999,11 @@ async function downloadAndExtractRelease(repo, version, assetName, githubToken) 
     return extractDir;
 }
 async function downloadAndExtractValgrindUrl(valgrindUrl, valgrindShaUrl) {
-    const archivePath = await tc.downloadTool(valgrindUrl);
+    const archivePath = await tc.downloadTool(valgrindUrl.toString());
     const name = path_1.default.basename(archivePath);
     const assetName = path_1.default.basename(new URL(valgrindUrl).pathname);
     if (valgrindShaUrl) {
-        const shaPath = await tc.downloadTool(valgrindShaUrl);
+        const shaPath = await tc.downloadTool(valgrindShaUrl.toString());
         await (0, hash_1.verifySha)('auto', archivePath, shaPath, assetName);
     }
     const extractDir = await tc.extractTar(archivePath);
@@ -32739,8 +33014,12 @@ async function downloadAndExtractValgrindSource(version) {
     const assetName = `valgrind-${version}.tar.bz2`;
     const tarballUrl = `https://sourceware.org/pub/valgrind/${assetName}`;
     const shaSumsUrl = `https://sourceware.org/pub/valgrind/sha512.sum`;
-    const archivePath = await tc.downloadTool(tarballUrl);
-    const shaAsset = await tc.downloadTool(shaSumsUrl);
+    const archivePath = await (0, utils_1.retry)(5, async () => {
+        return await tc.downloadTool(tarballUrl);
+    });
+    const shaAsset = await (0, utils_1.retry)(5, async () => {
+        return await tc.downloadTool(shaSumsUrl);
+    });
     await (0, hash_1.verifySha)(512, archivePath, shaAsset, assetName);
     const extractDir = await tc.extractTar(archivePath, undefined, 'xj');
     return extractDir;
@@ -32887,22 +33166,26 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.DEFAULT_RUNNER_STRATEGY = exports.DEFAULT_VALGRIND_STRATEGY = exports.VALID_RUNNER_STRATEGIES = exports.VALID_VALGRIND_STRATEGIES = void 0;
+exports.VALID_RUNNER_STRATEGIES = exports.VALID_VALGRIND_STRATEGIES = void 0;
 exports.parseGithubToken = parseGithubToken;
 exports.parseInputs = parseInputs;
 exports.parseRunnerTarget = parseRunnerTarget;
 exports.parseRunnerStrategies = parseRunnerStrategies;
 exports.parseRunnerVersion = parseRunnerVersion;
 exports.parseStrategies = parseStrategies;
+exports.parseValgrindConfigureArgs = parseValgrindConfigureArgs;
+exports.parseValgrindMakeEnvs = parseValgrindMakeEnvs;
 exports.parseValgrindStrategies = parseValgrindStrategies;
 exports.parseValgrindUrl = parseValgrindUrl;
 exports.parseValgrindShaUrl = parseValgrindShaUrl;
 exports.parseValgrindVersion = parseValgrindVersion;
 exports.parseInstallBuildDeps = parseInstallBuildDeps;
 const core = __importStar(__nccwpck_require__(7484));
+const shell_quote_1 = __nccwpck_require__(6591);
 const version_1 = __nccwpck_require__(311);
 const detect_1 = __nccwpck_require__(1052);
 const resolve_1 = __nccwpck_require__(1259);
+const utils_1 = __nccwpck_require__(1798);
 exports.VALID_VALGRIND_STRATEGIES = [
     'builder',
     'none',
@@ -32915,10 +33198,8 @@ exports.VALID_RUNNER_STRATEGIES = [
     'release',
     'source'
 ];
-exports.DEFAULT_VALGRIND_STRATEGY = 'builder,system,source';
-exports.DEFAULT_RUNNER_STRATEGY = 'binstall,release,source';
 async function parseGithubToken() {
-    return core.getInput('github-token') || process.env.GITHUB_TOKEN?.trim() || '';
+    return core.getInput('github-token') || '';
 }
 async function parseInputs() {
     const githubToken = await parseGithubToken();
@@ -32928,6 +33209,8 @@ async function parseInputs() {
     const runnerTarget = await parseRunnerTarget(isRunnerStrategyNone);
     const runnerVersion = await parseRunnerVersion(isRunnerStrategyNone, githubToken);
     const valgrindVersion = await parseValgrindVersion();
+    const valgrindConfigureArgs = await parseValgrindConfigureArgs();
+    const valgrindMakeEnvs = await parseValgrindMakeEnvs();
     const valgrindStrategies = await parseValgrindStrategies();
     const valgrindUrl = await parseValgrindUrl();
     const valgrindShaUrl = await parseValgrindShaUrl();
@@ -32937,6 +33220,8 @@ async function parseInputs() {
         runnerStrategies,
         runnerTarget,
         runnerVersion,
+        valgrindConfigureArgs,
+        valgrindMakeEnvs,
         valgrindStrategies,
         valgrindUrl,
         valgrindShaUrl,
@@ -32953,7 +33238,7 @@ async function parseRunnerTarget(isNoneStrategy) {
 }
 async function parseRunnerStrategies() {
     try {
-        return parseStrategies(core.getInput('runner-strategy') || exports.DEFAULT_RUNNER_STRATEGY, exports.VALID_RUNNER_STRATEGIES, 'runner');
+        return parseStrategies(core.getInput('runner-strategy'), exports.VALID_RUNNER_STRATEGIES, 'runner');
     }
     catch (error) {
         throw new Error(`Invalid runner-strategy: ${error.message}`);
@@ -33008,27 +33293,78 @@ function parseStrategies(input, valid, label) {
     }
     return Array.from(strategies);
 }
+async function parseValgrindConfigureArgs() {
+    const input = core.getInput('valgrind-configure-args');
+    if (!input) {
+        return [];
+    }
+    const parsed = (0, shell_quote_1.parse)(input);
+    const args = [];
+    for (const token of parsed) {
+        if (typeof token !== 'string') {
+            throw new Error(`Invalid valgrind-configure-args: other tokens than strings are not allowed`);
+        }
+        args.push(token);
+    }
+    return args;
+}
+async function parseValgrindMakeEnvs() {
+    const input = core.getInput('valgrind-make-envs');
+    if (!input) {
+        return new Map();
+    }
+    const parsed = (0, shell_quote_1.parse)(input);
+    const envs = new Map();
+    for (const token of parsed) {
+        if (typeof token !== 'string') {
+            throw new Error(`Invalid valgrind-make-envs: other tokens than strings are not allowed`);
+        }
+        const [key, value] = (0, utils_1.splitOnce)(token, '=').map((t) => t.trim());
+        envs.set(key, value);
+    }
+    return envs;
+}
 async function parseValgrindStrategies() {
     try {
-        return parseStrategies(core.getInput('valgrind-strategy') || exports.DEFAULT_VALGRIND_STRATEGY, exports.VALID_VALGRIND_STRATEGIES, 'valgrind');
+        return parseStrategies(core.getInput('valgrind-strategy'), exports.VALID_VALGRIND_STRATEGIES, 'valgrind');
     }
     catch (error) {
         throw new Error(`Invalid valgrind-strategy: ${error.message}`);
     }
 }
-// FIX: use URL and return it
 async function parseValgrindUrl() {
-    return core.getInput('valgrind-url') || '';
+    try {
+        const input = core.getInput('valgrind-url');
+        if (input) {
+            return new URL(input);
+        }
+        else {
+            return undefined;
+        }
+    }
+    catch (error) {
+        throw new Error(`Invalid valgrind-url: ${error.message}`);
+    }
 }
-// FIX: use URL and return it
 async function parseValgrindShaUrl() {
-    return core.getInput('valgrind-sha-url') || '';
+    try {
+        const input = core.getInput('valgrind-sha-url');
+        if (input) {
+            return new URL(input);
+        }
+        else {
+            return undefined;
+        }
+    }
+    catch (error) {
+        throw new Error(`Invalid valgrind-sha-url: ${error.message}`);
+    }
 }
 async function parseValgrindVersion() {
     let valgrindVersionInput;
     let valgrindVersion;
     try {
-        valgrindVersionInput = core.getInput('valgrind-version') || 'latest';
+        valgrindVersionInput = core.getInput('valgrind-version') || 'auto';
         valgrindVersion = version_1.Version.fromString(valgrindVersionInput);
     }
     catch (error) {
@@ -33040,7 +33376,7 @@ async function parseValgrindVersion() {
             validVersions = (await (0, resolve_1.fetchSortedValgrindVersions)()).filter((v) => v.major >= 3 && v.minor >= 16);
         }
         catch {
-            throw new Error(`Failed to validate valgrind version`);
+            throw new Error(`Failed to validate Valgrind version`);
         }
         if (!validVersions.some((v) => v.equals(valgrindVersion))) {
             throw new Error(`Invalid valgrind-version '${valgrindVersionInput}': \
@@ -33118,6 +33454,7 @@ const resolve_1 = __nccwpck_require__(1259);
 const utils_1 = __nccwpck_require__(1798);
 const version_1 = __nccwpck_require__(311);
 const platform_1 = __nccwpck_require__(3728);
+const shell_quote_1 = __nccwpck_require__(6591);
 function getRunnerInstallDir() {
     if (process.env.CARGO_INSTALL_ROOT) {
         return { dir: `${process.env.CARGO_INSTALL_ROOT}/bin`, needsExport: false };
@@ -33158,20 +33495,26 @@ async function installRunner(version, strategies, githubToken, target) {
         switch (strategy) {
             case 'binstall': {
                 const result = await installRunnerWithBinstall(version, target);
-                if (result)
+                if (result) {
+                    await (0, utils_1.logInstalledVersion)('gungraun-runner', 'gungraun-runner');
                     return;
+                }
                 break;
             }
             case 'release': {
                 const result = await installRunnerFromRelease(version, githubToken, target);
-                if (result)
+                if (result) {
+                    await (0, utils_1.logInstalledVersion)('gungraun-runner', 'gungraun-runner');
                     return;
+                }
                 break;
             }
             case 'source': {
                 const result = await installRunnerFromSource(version);
-                if (result)
+                if (result) {
+                    await (0, utils_1.logInstalledVersion)('gungraun-runner', 'gungraun-runner');
                     return;
+                }
                 break;
             }
             case 'none': {
@@ -33210,9 +33553,9 @@ async function installRunnerFromRelease(version, githubToken, target) {
             await io.mv(runnerPath, path.join(installDir, 'gungraun-runner'));
             if (needsExport) {
                 core.addPath(installDir);
+                process.env.PATH = `${installDir}${path.delimiter}${process.env.PATH}`;
                 core.exportVariable('GUNGRAUN_RUNNER', path.join(installDir, 'gungraun-runner'));
             }
-            await (0, utils_1.logInstalledVersion)(path.join(installDir, 'gungraun-runner'), 'gungraun-runner', `gungraun-runner ${resolvedVersion}`);
             return true;
         }
         catch (error) {
@@ -33233,7 +33576,6 @@ async function installRunnerFromSource(version, target) {
                 args.push('--target', target);
             }
             await exec.exec((0, utils_1.getCargoBin)(), args);
-            await (0, utils_1.logInstalledVersion)('gungraun-runner', 'gungraun-runner', `gungraun-runner ${version}`);
             return true;
         }
         catch (error) {
@@ -33260,10 +33602,6 @@ async function installRunnerWithBinstall(version, target) {
                 args.push(`gungraun-runner@${version}`);
             }
             await exec.exec((0, utils_1.getCargoBin)(), args);
-            const runnerPath = await io.which('gungraun-runner', false);
-            if (runnerPath) {
-                await (0, utils_1.logInstalledVersion)('gungraun-runner', 'gungraun-runner', `gungraun-runner ${version}`);
-            }
             return true;
         }
         catch (error) {
@@ -33273,25 +33611,31 @@ async function installRunnerWithBinstall(version, target) {
     });
 }
 /** Installs valgrind by trying each strategy in order until one succeeds. */
-async function installValgrind(version, strategies, installBuildDeps = false, githubToken, valgrindUrl, valgrindShaUrl) {
+async function installValgrind(version, strategies, installBuildDeps = false, githubToken, valgrindUrl, valgrindShaUrl, configureArgs = [], makeEnvs = new Map()) {
     for (const strategy of strategies) {
         switch (strategy) {
             case 'builder': {
                 const result = await installValgrindFromBuilder(version.isAuto() ? version_1.Version.latest() : version, githubToken, valgrindUrl, valgrindShaUrl);
-                if (result)
+                if (result) {
+                    await (0, utils_1.logInstalledVersion)('valgrind', 'valgrind');
                     return;
+                }
                 break;
             }
             case 'system': {
                 const result = await installValgrindWithPackageManager(version);
-                if (result)
+                if (result) {
+                    await (0, utils_1.logInstalledVersion)('valgrind', 'valgrind');
                     return;
+                }
                 break;
             }
             case 'source': {
-                const result = await installValgrindFromSource(version.isAuto() ? version_1.Version.latest() : version, installBuildDeps);
-                if (result)
+                const result = await installValgrindFromSource(version.isAuto() ? version_1.Version.latest() : version, installBuildDeps, configureArgs, makeEnvs);
+                if (result) {
+                    await (0, utils_1.logInstalledVersion)('valgrind', 'valgrind');
                     return;
+                }
                 break;
             }
             case 'none': {
@@ -33312,7 +33656,7 @@ async function installValgrindFromBuilder(version, githubToken, valgrindUrl, val
         try {
             let extractDir;
             if (valgrindUrl) {
-                (0, utils_1.printInfo)(`Downloading valgrind archive from url '${valgrindUrl}'`);
+                (0, utils_1.printInfo)(`Downloading Valgrind archive from url '${valgrindUrl}'`);
                 const { extractDir: dir } = await (0, download_1.downloadAndExtractValgrindUrl)(valgrindUrl, valgrindShaUrl);
                 extractDir = dir;
             }
@@ -33322,28 +33666,26 @@ async function installValgrindFromBuilder(version, githubToken, valgrindUrl, val
                 const arch = (0, detect_1.detectArch)(target);
                 const result = await (0, resolve_1.resolveValgrindBuilderAssetName)(version, arch, platform, githubToken);
                 if (!result) {
-                    (0, utils_1.printError)(`No valgrind builder release found for valgrind version ${version} \
+                    (0, utils_1.printError)(`No Valgrind builder release found for Valgrind version ${version} \
 (${arch}-${platform})`);
                     return false;
                 }
                 const { name } = result;
-                (0, utils_1.printInfo)(`Downloading valgrind builder archive '${name}'`);
+                (0, utils_1.printInfo)(`Downloading Valgrind builder archive '${name}'`);
                 // This is not the valgrind version. We always use the latest version of the builder
                 // release and extract the archive attached to the latest release with the given
                 // `name`.
                 extractDir = await (0, download_1.downloadAndExtractValgrind)(version_1.Version.latest(), name, githubToken);
             }
             const entries = await fs.promises.readdir(extractDir);
-            await exec.exec('sudo', [
-                'cp',
+            await (0, utils_1.execPrivileged)('cp', [
                 '-a',
                 ...entries.map((e) => path.join(extractDir, e)),
                 '/'
             ]);
-            await (0, utils_1.logInstalledVersion)('valgrind', 'valgrind');
         }
         catch (error) {
-            (0, utils_1.printError)(`Failed to install valgrind from release: ${error.message}`);
+            (0, utils_1.printError)(`Failed to install Valgrind from release: ${error.message}`);
             return false;
         }
         await installDebugSymbols();
@@ -33355,7 +33697,7 @@ async function installValgrindWithPackageManager(version) {
     return (0, utils_1.withGroup)('Installing valgrind via package manager', async () => {
         const { packageManager } = await (0, detect_1.detectPlatform)();
         if (!packageManager) {
-            (0, utils_1.printError)(`Cannot install valgrind: No package manager detected for this platform`);
+            (0, utils_1.printError)(`Cannot install Valgrind: No package manager detected for this platform`);
             return false;
         }
         if (!version.isAuto()) {
@@ -33381,7 +33723,6 @@ async function installValgrindWithPackageManager(version) {
         }
         try {
             await packageManager.accept(new platform_1.PackagesInstaller('valgrind', ...packageManager.getDebugInfoPackages()));
-            await (0, utils_1.logInstalledVersion)('valgrind', 'valgrind');
             return true;
         }
         catch (error) {
@@ -33392,28 +33733,27 @@ async function installValgrindWithPackageManager(version) {
 }
 /** Installs build dependencies required to compile valgrind from source. */
 async function installValgrindBuildDeps() {
-    return (0, utils_1.withGroup)('Installing valgrind build dependencies', async () => {
-        const { packageManager } = await (0, detect_1.detectPlatform)();
-        if (!packageManager) {
-            (0, utils_1.printError)(`Cannot install build dependencies: unsupported package manager`);
-            return false;
-        }
-        try {
-            const packages = packageManager.getValgrindBuildDeps();
-            await packageManager.accept(new platform_1.PackagesInstaller(...packages));
-            (0, utils_1.printInfo)(`Installed build dependencies: ${packages.join(', ')}`);
-            return true;
-        }
-        catch (error) {
-            (0, utils_1.printError)(`Failed to install build dependencies: ${error.message}`);
-            return false;
-        }
-    });
+    const { packageManager } = await (0, detect_1.detectPlatform)();
+    if (!packageManager) {
+        (0, utils_1.printError)(`Cannot install build dependencies: unsupported package manager`);
+        return false;
+    }
+    try {
+        const packages = packageManager.getValgrindBuildDeps();
+        await packageManager.accept(new platform_1.PackagesInstaller(...packages));
+        (0, utils_1.printInfo)(`Installed build dependencies: ${packages.join(', ')}`);
+        return true;
+    }
+    catch (error) {
+        (0, utils_1.printError)(`Failed to install build dependencies: ${error.message}`);
+        return false;
+    }
 }
 /** Installs valgrind from the source tarball. */
-async function installValgrindFromSource(version, installBuildDeps = false) {
+async function installValgrindFromSource(version, installBuildDeps = false, configureArgs = [], makeEnvs = new Map()) {
     return (0, utils_1.withGroup)('Installing valgrind from source', async () => {
         try {
+            const { id } = await (0, detect_1.detectPlatform)();
             const resolvedVersion = await (0, resolve_1.resolveValgrindVersion)(version);
             if (installBuildDeps) {
                 const depsResult = await installValgrindBuildDeps();
@@ -33424,14 +33764,36 @@ async function installValgrindFromSource(version, installBuildDeps = false) {
             }
             const extractDir = await (0, download_1.downloadAndExtractValgrindSource)(resolvedVersion);
             const sourceDir = path.join(extractDir, `valgrind-${resolvedVersion}`);
-            await exec.exec('./configure', ['--prefix=/usr'], { cwd: sourceDir });
+            const execOpts = { cwd: sourceDir };
+            const args = ['--prefix=/usr'];
+            // based on the APKBUILD:
+            // https://gitlab.alpinelinux.org/alpine/aports/-/blob/68861fc5eb9fcc485c720fdf743272b41cbc313b/main/valgrind/APKBUILD
+            if (id === 'alpine') {
+                execOpts.env = {
+                    CFLAGS: '-fno-stack-protector -no-pie -U_FORTIFY_SOURCE',
+                    ...process.env,
+                    ...Object.fromEntries(makeEnvs)
+                };
+                args.push('--without-mpicc');
+            }
+            else {
+                execOpts.env = {
+                    ...process.env,
+                    ...Object.fromEntries(makeEnvs)
+                };
+            }
+            args.push(...configureArgs);
+            (0, utils_1.printInfo)(`:: Running: ./configure ${(0, shell_quote_1.quote)(args)}`);
+            await exec.exec('./configure', args, execOpts);
             const ncpus = os.cpus().length;
-            await exec.exec('make', [`-j${ncpus}`, 'BUILD_DOCS=none'], { cwd: sourceDir });
-            await exec.exec('sudo', ['make', 'install'], { cwd: sourceDir });
-            await (0, utils_1.logInstalledVersion)('valgrind', 'valgrind', `valgrind-${resolvedVersion}`);
+            const makeArgs = [`-j${ncpus}`, 'BUILD_DOCS=none'];
+            (0, utils_1.printInfo)(`:: Running: make ${(0, shell_quote_1.quote)(args)}`);
+            await exec.exec('make', makeArgs, { ...execOpts });
+            (0, utils_1.printInfo)(`:: Running: make install`);
+            await (0, utils_1.execPrivileged)('make', ['install'], { cwd: sourceDir });
         }
         catch (error) {
-            (0, utils_1.printError)(`Failed to install valgrind from source: ${error.message}`);
+            (0, utils_1.printError)(`Failed to install Valgrind from source: ${error.message}`);
             return false;
         }
         await installDebugSymbols();
@@ -33487,13 +33849,11 @@ const io = __importStar(__nccwpck_require__(4994));
 const install_1 = __nccwpck_require__(232);
 const utils_1 = __nccwpck_require__(1798);
 const inputs_1 = __nccwpck_require__(8422);
+const detect_1 = __nccwpck_require__(1052);
 /** Main entry point: validates environment, detects versions, and installs gungraun-runner and valgrind. */
 async function run() {
     if (process.platform !== 'linux') {
-        (0, utils_1.bail)('This action only supports Linux runners');
-    }
-    if (!(await io.which((0, utils_1.getCargoBin)(), false))) {
-        (0, utils_1.bail)('cargo is not installed. This action requires Rust/Cargo.');
+        (0, utils_1.bail)('This action currently only supports Linux runners');
     }
     let inputs;
     try {
@@ -33502,12 +33862,15 @@ async function run() {
     catch (error) {
         (0, utils_1.bail)(`Error parsing inputs: ${error.message}`);
     }
-    const { githubToken, installBuildDeps, runnerStrategies, runnerVersion, runnerTarget, valgrindStrategies, valgrindUrl, valgrindShaUrl, valgrindVersion } = inputs;
+    if (!inputs.runnerStrategies.includes('none') && !(await io.which((0, utils_1.getCargoBin)(), false))) {
+        (0, utils_1.bail)('cargo is not installed. This action requires Rust/Cargo to be able to install gungraun-runner.');
+    }
+    const { githubToken, installBuildDeps, runnerStrategies, runnerVersion, runnerTarget, valgrindConfigureArgs, valgrindMakeEnvs, valgrindStrategies, valgrindUrl, valgrindShaUrl, valgrindVersion } = inputs;
     const valgrindPath = await io.which('valgrind', false);
     if (valgrindPath) {
         try {
             const { stdout } = await exec.getExecOutput('valgrind', ['--version'], {
-                silent: true,
+                silent: !(0, utils_1.isDebug)(),
                 ignoreReturnCode: true
             });
             (0, utils_1.printInfo)(`Valgrind already installed: ${stdout.trim()} (${valgrindPath})`);
@@ -33518,10 +33881,14 @@ async function run() {
     }
     else {
         try {
-            await (0, install_1.installValgrind)(valgrindVersion, valgrindStrategies, installBuildDeps, githubToken, valgrindUrl, valgrindShaUrl);
+            await (0, install_1.installValgrind)(valgrindVersion, valgrindStrategies, installBuildDeps, githubToken, valgrindUrl, valgrindShaUrl, valgrindConfigureArgs, valgrindMakeEnvs);
+            const { id, relatedIds } = await (0, detect_1.detectPlatform)();
+            if (relatedIds.length === 0 ? id === 'arch' : relatedIds.includes('arch')) {
+                core.exportVariable('DEBUGINFOD_URLS', 'https://debuginfod.archlinux.org');
+            }
         }
         catch (error) {
-            (0, utils_1.bail)(`Error installing valgrind: ${error.message}`);
+            (0, utils_1.bail)(`Error installing Valgrind: ${error.message}`);
         }
     }
     try {
@@ -33544,14 +33911,14 @@ run().catch((error) => {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.PackagesInstaller = exports.FetchLatestPackageVersion = exports.Zypper = exports.Yum = exports.Pacman = exports.Dnf = exports.AptGet = exports.Apk = void 0;
+exports.PackagesInstaller = exports.FetchLatestPackageVersion = exports.Zypper = exports.Yum = exports.Pacman = exports.MicroDnf = exports.Dnf = exports.AptGet = exports.Apk = void 0;
 const version_1 = __nccwpck_require__(311);
 const utils_1 = __nccwpck_require__(1798);
 class Apk {
     debugInfoPackages = ['musl-dbg'];
     // The busybox sed doesn't work with the configure script
     valgrindBuildDeps = [
-        'build-dev',
+        'build-base',
         'bzip2',
         'sed',
         'perl',
@@ -33567,13 +33934,13 @@ class Apk {
         return this.valgrindBuildDeps;
     }
     async updateCache() {
-        await (0, utils_1.execSudo)('apk', 'update');
+        await (0, utils_1.execPrivileged)('apk', ['update']);
     }
 }
 exports.Apk = Apk;
 class AptGet {
     debugInfoPackages = ['libc6-dbg'];
-    valgrindBuildDeps = ['gcc', 'make', 'bzip2'];
+    valgrindBuildDeps = ['build-essential', 'gcc', 'make', 'bzip2'];
     accept(v) {
         return v.visitAptGet(this);
     }
@@ -33584,7 +33951,9 @@ class AptGet {
         return this.valgrindBuildDeps;
     }
     async updateCache() {
-        await (0, utils_1.execSudo)('apt-get', 'update', '-qq');
+        await (0, utils_1.execPrivileged)('apt-get', ['update', '-qq', '--allow-releaseinfo-change'], {
+            env: { DEBIAN_FRONTEND: 'noninteractive' }
+        });
     }
 }
 exports.AptGet = AptGet;
@@ -33611,6 +33980,21 @@ class Dnf {
     }
 }
 exports.Dnf = Dnf;
+class MicroDnf extends Dnf {
+    accept(v) {
+        return v.visitMicroDnf(this);
+    }
+    extractVersionStrings(output, pkg) {
+        // sample: "valgrind-1:3.25.1-3.el10.x86_64"
+        const regex = new RegExp(String.raw `^${pkg}[^\s:]*:([^\s]+).*`, 'gm');
+        const matches = [...output.matchAll(regex)];
+        if (matches.length === 0) {
+            return null;
+        }
+        return matches.map((m) => m[1]);
+    }
+}
+exports.MicroDnf = MicroDnf;
 class Pacman {
     // Arch linux doesn't ship the debug symbols with glibc and doesn't have them as a separate
     // package. Instead, arch linux relies on debuginfod.
@@ -33626,7 +34010,7 @@ class Pacman {
         return this.valgrindBuildDeps;
     }
     async updateCache() {
-        await (0, utils_1.execSudo)('pacman', '-Sy');
+        await (0, utils_1.execPrivileged)('pacman', ['-Sy']);
     }
 }
 exports.Pacman = Pacman;
@@ -33667,7 +34051,9 @@ class FetchLatestPackageVersion {
     }
     async visitAptGet(pm) {
         await pm.updateCache();
-        const output = await (0, utils_1.execSudoWithOutput)('apt-cache', 'policy', this.pkg);
+        const output = await (0, utils_1.execPrivilegedWithOutput)('apt-cache', ['policy', this.pkg], {
+            env: { DEBIAN_FRONTEND: 'noninteractive' }
+        });
         // sample: "  Installed: (none)\n  Candidate: 1:3.15.0-1"
         const regex = new RegExp(String.raw `^\s*Candidate:\s*([^\s]+)`, 'gm');
         const matches = [...output.matchAll(regex)];
@@ -33675,7 +34061,7 @@ class FetchLatestPackageVersion {
     }
     async visitApk(pm) {
         await pm.updateCache();
-        const output = await (0, utils_1.execSudoWithOutput)('apk', 'policy', this.pkg);
+        const output = await (0, utils_1.execPrivilegedWithOutput)('apk', ['policy', this.pkg]);
         // sample policy:
         // "valgrind policy:
         //    3.25.1-r2:
@@ -33685,13 +34071,33 @@ class FetchLatestPackageVersion {
         return FetchLatestPackageVersion.getLatestVersion(matches.map((m) => m[1]));
     }
     async visitDnf(pm) {
-        const output = await (0, utils_1.execSudoWithOutput)('dnf', 'list', '--showduplicates', this.pkg);
+        let output;
+        try {
+            output = await (0, utils_1.execPrivilegedWithOutput)('dnf', [
+                '--enablerepo=*-debuginfo',
+                'list',
+                '--showduplicates',
+                this.pkg
+            ]);
+        }
+        catch {
+            return new MicroDnf().accept(new FetchLatestPackageVersion(this.pkg));
+        }
+        const matches = pm.extractVersionStrings(output, this.pkg);
+        return FetchLatestPackageVersion.getLatestVersion(matches);
+    }
+    async visitMicroDnf(pm) {
+        const output = await (0, utils_1.execPrivilegedWithOutput)('microdnf', [
+            '--enablerepo=*-debuginfo',
+            'repoquery',
+            this.pkg
+        ]);
         const matches = pm.extractVersionStrings(output, this.pkg);
         return FetchLatestPackageVersion.getLatestVersion(matches);
     }
     async visitPacman(pm) {
         await pm.updateCache();
-        const output = await (0, utils_1.execSudoWithOutput)('pacman', '-Si', this.pkg);
+        const output = await (0, utils_1.execPrivilegedWithOutput)('pacman', ['-Si', this.pkg]);
         // sample: "Version         : 3.17.0-1"
         const regex = new RegExp(String.raw `^\s*Version\s*:\s*([^\s]+)`, 'gm');
         const matches = [...output.matchAll(regex)];
@@ -33700,7 +34106,12 @@ class FetchLatestPackageVersion {
     async visitYum(pm) {
         let output;
         try {
-            output = await (0, utils_1.execSudoWithOutput)('yum', 'list', '--showduplicates', this.pkg);
+            output = await (0, utils_1.execPrivilegedWithOutput)('yum', [
+                '--enablerepo=*-debuginfo',
+                'list',
+                '--showduplicates',
+                this.pkg
+            ]);
         }
         catch {
             return new Dnf().accept(new FetchLatestPackageVersion(this.pkg));
@@ -33709,7 +34120,7 @@ class FetchLatestPackageVersion {
         return FetchLatestPackageVersion.getLatestVersion(matches);
     }
     async visitZypper(_pm) {
-        const output = await (0, utils_1.execSudoWithOutput)('zypper', 'info', this.pkg);
+        const output = await (0, utils_1.execPrivilegedWithOutput)('zypper', ['info', this.pkg]);
         // sample: "Version   : 3.17.0-1.1"
         const regex = new RegExp(String.raw `^\s*Version\s*:\s*([^\s]+)`, 'gm');
         const matches = [...output.matchAll(regex)];
@@ -33728,30 +34139,55 @@ class PackagesInstaller {
     async visitAptGet(pm) {
         if (this.hasPackages()) {
             await pm.updateCache();
-            await (0, utils_1.execSudoWithOutput)('apt-get', 'install', '-y', ...this.pkgs);
+            await (0, utils_1.execPrivilegedWithOutput)('apt-get', ['install', '-y', '--no-install-recommends', ...this.pkgs], { env: { DEBIAN_FRONTEND: 'noninteractive' } });
         }
     }
     async visitApk(pm) {
         if (this.hasPackages()) {
             await pm.updateCache();
-            await (0, utils_1.execSudoWithOutput)('apk', 'add', '--interactive=no', ...this.pkgs);
+            await (0, utils_1.execPrivilegedWithOutput)('apk', ['add', ...this.pkgs]);
         }
     }
     async visitDnf(_pm) {
         if (this.hasPackages()) {
-            await (0, utils_1.execSudoWithOutput)('dnf', 'install', '-y', ...this.pkgs);
+            try {
+                await (0, utils_1.execPrivilegedWithOutput)('dnf', [
+                    '--enablerepo=*-debuginfo',
+                    'install',
+                    '-y',
+                    ...this.pkgs
+                ]);
+            }
+            catch {
+                return new MicroDnf().accept(new PackagesInstaller(...this.pkgs));
+            }
+        }
+    }
+    async visitMicroDnf(_pm) {
+        if (this.hasPackages()) {
+            await (0, utils_1.execPrivilegedWithOutput)('microdnf', [
+                '--enablerepo=*-debuginfo',
+                'install',
+                '-y',
+                ...this.pkgs
+            ]);
         }
     }
     async visitPacman(pm) {
         if (this.hasPackages()) {
             await pm.updateCache();
-            await (0, utils_1.execSudoWithOutput)('pacman', '-S', '--noconfirm', ...this.pkgs);
+            await (0, utils_1.execPrivilegedWithOutput)('pacman', ['-S', '--noconfirm', ...this.pkgs]);
         }
     }
     async visitYum(_pm) {
         if (this.hasPackages()) {
             try {
-                await (0, utils_1.execSudoWithOutput)('yum', 'install', '-y', ...this.pkgs);
+                await (0, utils_1.execPrivilegedWithOutput)('yum', [
+                    '--enablerepo=*-debuginfo',
+                    'install',
+                    '-y',
+                    ...this.pkgs
+                ]);
             }
             catch {
                 return new Dnf().accept(new PackagesInstaller(...this.pkgs));
@@ -33760,7 +34196,13 @@ class PackagesInstaller {
     }
     async visitZypper(_pm) {
         if (this.hasPackages()) {
-            await (0, utils_1.execSudoWithOutput)('zypper', '--non-interactive', '--plus-content', 'debug', 'install', ...this.pkgs);
+            await (0, utils_1.execPrivilegedWithOutput)('zypper', [
+                '--non-interactive',
+                '--plus-content',
+                'debug',
+                'install',
+                ...this.pkgs
+            ]);
         }
     }
 }
@@ -33859,8 +34301,11 @@ async function fetchRunnerVersions(githubToken) {
     }
 }
 async function fetchSortedValgrindVersions() {
-    const { stdout } = await exec.getExecOutput('git', ['ls-remote', '--tags', utils_1.VALGRIND_SOURCE_REPO], {
-        silent: true
+    const stdout = await (0, utils_1.retry)(5, async () => {
+        const output = await exec.getExecOutput('git', ['ls-remote', '--tags', utils_1.VALGRIND_SOURCE_REPO], {
+            silent: !(0, utils_1.isDebug)()
+        });
+        return output.stdout;
     });
     const versions = stdout
         .trim()
@@ -33992,10 +34437,12 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.VALGRIND_SOURCE_REPO = exports.VALGRIND_BUILDER_REPO = exports.GUNGRAUN_REPO = void 0;
+exports.isDebug = isDebug;
 exports.bail = bail;
 exports.escapeRegex = escapeRegex;
-exports.execSudoWithOutput = execSudoWithOutput;
-exports.execSudo = execSudo;
+exports.isRoot = isRoot;
+exports.execPrivileged = execPrivileged;
+exports.execPrivilegedWithOutput = execPrivilegedWithOutput;
 exports.findBinary = findBinary;
 exports.getCargoBin = getCargoBin;
 exports.logInstalledVersion = logInstalledVersion;
@@ -34003,6 +34450,8 @@ exports.normalizePath = normalizePath;
 exports.printError = printError;
 exports.printInfo = printInfo;
 exports.printWarning = printWarning;
+exports.randNumber = randNumber;
+exports.retry = retry;
 exports.splitOnce = splitOnce;
 exports.withGroup = withGroup;
 const core = __importStar(__nccwpck_require__(7484));
@@ -34014,6 +34463,9 @@ exports.GUNGRAUN_REPO = 'gungraun/gungraun';
 /** GitHub repository for valgrind-builder releases. */
 exports.VALGRIND_BUILDER_REPO = 'gungraun/valgrind-builder';
 exports.VALGRIND_SOURCE_REPO = 'https://sourceware.org/git/valgrind.git';
+function isDebug() {
+    return !!process.env.GUNGRAUN_ACTION_DEBUG;
+}
 /** Marks the action as failed and exits the process. Never returns. */
 function bail(message) {
     core.setFailed(message);
@@ -34023,16 +34475,35 @@ function bail(message) {
 function escapeRegex(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
-async function execSudoWithOutput(...args) {
-    const { stdout } = await exec.getExecOutput('sudo', args, {
-        silent: true
-    });
-    return stdout;
+function isRoot() {
+    return process.getuid?.() === 0;
 }
-async function execSudo(...args) {
-    await exec.exec('sudo', args, {
-        silent: true
-    });
+async function execPrivileged(cmd, args, opts) {
+    const execOpts = { silent: !isDebug() };
+    if (opts?.cwd) {
+        execOpts.cwd = opts.cwd;
+    }
+    if (opts?.env) {
+        execOpts.env = { ...process.env, ...opts.env };
+    }
+    if (isRoot()) {
+        await exec.exec(cmd, args, execOpts);
+    }
+    else {
+        await exec.exec('sudo', [cmd, ...args], execOpts);
+    }
+}
+async function execPrivilegedWithOutput(cmd, args, opts) {
+    const execOpts = { silent: !isDebug() };
+    if (opts?.env) {
+        execOpts.env = { ...process.env, ...opts.env };
+    }
+    if (isRoot()) {
+        const { stdout } = await exec.getExecOutput(cmd, args, execOpts);
+        return stdout;
+    }
+    const { stdout } = await exec.getExecOutput('sudo', [cmd, ...args], execOpts);
+    return stdout;
 }
 async function findBinary(dir, name) {
     const entries = fs.readdirSync(dir, { withFileTypes: true, recursive: true });
@@ -34049,12 +34520,12 @@ function getCargoBin() {
     return process.env.CARGO || 'cargo';
 }
 /** Logs the installed version of a binary, or a fallback string if unavailable. */
-async function logInstalledVersion(binary, label, fallback) {
+async function logInstalledVersion(binary, label) {
     const { stdout } = await exec.getExecOutput(binary, ['--version'], {
-        silent: true,
+        silent: !isDebug(),
         ignoreReturnCode: true
     });
-    printInfo(`${label} installed: ${stdout.trim() || fallback || 'version unknown'}`);
+    printInfo(`${label} installed: ${stdout.trim() || 'version unknown'}`);
 }
 function normalizePath(path) {
     const trimmed = path.trim();
@@ -34076,6 +34547,25 @@ function printInfo(message) {
 /** Logs a warning message. */
 function printWarning(message) {
     core.warning(message);
+}
+function randNumber(min = 0, max) {
+    return Math.floor(Math.random() * (max - min)) + min;
+}
+async function retry(maxRetries, fn) {
+    for (let index = 0;; index++) {
+        try {
+            return await fn();
+        }
+        catch (error) {
+            if (index < maxRetries) {
+                await new Promise((r) => setTimeout(r, randNumber(5000, 20000)));
+                continue;
+            }
+            else {
+                throw error;
+            }
+        }
+    }
 }
 function splitOnce(str, sep) {
     const i = str.indexOf(sep);
@@ -34123,7 +34613,7 @@ class Version {
         if (match) {
             return new Version(Number(match[1]), Number(match[2]), Number(match[3]));
         }
-        throw new Error(`Invalid valgrind version tag: ${tag}`);
+        throw new Error(`Invalid Valgrind version tag: ${tag}`);
     }
     static fromString(str) {
         const lower = str.trim().toLowerCase();

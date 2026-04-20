@@ -1,7 +1,9 @@
 import * as core from '@actions/core';
+import { parse as parseShellArgs } from 'shell-quote';
 import { ResolvedVersion, Version } from './version';
 import { detectProjectVersion, detectTarget } from './detect';
 import { fetchRunnerVersions, fetchSortedValgrindVersions } from './resolve';
+import { splitOnce } from './utils';
 
 export type ValgrindStrategy = 'builder' | 'system' | 'source' | 'none';
 export type RunnerStrategy = 'binstall' | 'release' | 'source' | 'none';
@@ -18,8 +20,6 @@ export const VALID_RUNNER_STRATEGIES: readonly RunnerStrategy[] = [
     'release',
     'source'
 ];
-export const DEFAULT_VALGRIND_STRATEGY: string = 'builder,system,source';
-export const DEFAULT_RUNNER_STRATEGY: string = 'binstall,release,source';
 
 export interface Inputs {
     installBuildDeps: boolean;
@@ -27,14 +27,16 @@ export interface Inputs {
     runnerStrategies: RunnerStrategy[];
     runnerTarget: string;
     runnerVersion: Version;
+    valgrindConfigureArgs: string[];
+    valgrindMakeEnvs: Map<string, string>;
     valgrindStrategies: ValgrindStrategy[];
-    valgrindUrl: string;
-    valgrindShaUrl: string;
+    valgrindUrl: URL | undefined;
+    valgrindShaUrl: URL | undefined;
     valgrindVersion: Version;
 }
 
 export async function parseGithubToken(): Promise<string> {
-    return core.getInput('github-token') || process.env.GITHUB_TOKEN?.trim() || '';
+    return core.getInput('github-token') || '';
 }
 
 export async function parseInputs(): Promise<Inputs> {
@@ -46,7 +48,10 @@ export async function parseInputs(): Promise<Inputs> {
 
     const runnerTarget = await parseRunnerTarget(isRunnerStrategyNone);
     const runnerVersion = await parseRunnerVersion(isRunnerStrategyNone, githubToken);
+
     const valgrindVersion = await parseValgrindVersion();
+    const valgrindConfigureArgs = await parseValgrindConfigureArgs();
+    const valgrindMakeEnvs = await parseValgrindMakeEnvs();
     const valgrindStrategies = await parseValgrindStrategies();
     const valgrindUrl = await parseValgrindUrl();
     const valgrindShaUrl = await parseValgrindShaUrl();
@@ -57,6 +62,8 @@ export async function parseInputs(): Promise<Inputs> {
         runnerStrategies,
         runnerTarget,
         runnerVersion,
+        valgrindConfigureArgs,
+        valgrindMakeEnvs,
         valgrindStrategies,
         valgrindUrl,
         valgrindShaUrl,
@@ -75,7 +82,7 @@ export async function parseRunnerTarget(isNoneStrategy: boolean): Promise<string
 export async function parseRunnerStrategies(): Promise<RunnerStrategy[]> {
     try {
         return parseStrategies<RunnerStrategy>(
-            core.getInput('runner-strategy') || DEFAULT_RUNNER_STRATEGY,
+            core.getInput('runner-strategy'),
             VALID_RUNNER_STRATEGIES,
             'runner'
         );
@@ -155,10 +162,52 @@ export function parseStrategies<T extends string>(
     return Array.from(strategies);
 }
 
+export async function parseValgrindConfigureArgs(): Promise<string[]> {
+    const input = core.getInput('valgrind-configure-args');
+    if (!input) {
+        return [];
+    }
+
+    const parsed = parseShellArgs(input) as (string | object)[];
+    const args: string[] = [];
+    for (const token of parsed) {
+        if (typeof token !== 'string') {
+            throw new Error(
+                `Invalid valgrind-configure-args: other tokens than strings are not allowed`
+            );
+        }
+        args.push(token);
+    }
+
+    return args;
+}
+
+export async function parseValgrindMakeEnvs(): Promise<Map<string, string>> {
+    const input = core.getInput('valgrind-make-envs');
+    if (!input) {
+        return new Map();
+    }
+
+    const parsed = parseShellArgs(input) as (string | object)[];
+    const envs: Map<string, string> = new Map();
+    for (const token of parsed) {
+        if (typeof token !== 'string') {
+            throw new Error(
+                `Invalid valgrind-make-envs: other tokens than strings are not allowed`
+            );
+        }
+
+        const [key, value] = splitOnce(token, '=').map((t) => t.trim());
+        envs.set(key, value);
+    }
+
+    return envs;
+}
+
 export async function parseValgrindStrategies(): Promise<ValgrindStrategy[]> {
     try {
         return parseStrategies<ValgrindStrategy>(
-            core.getInput('valgrind-strategy') || DEFAULT_VALGRIND_STRATEGY,
+            core.getInput('valgrind-strategy'),
             VALID_VALGRIND_STRATEGIES,
             'valgrind'
         );
@@ -167,14 +216,30 @@ export async function parseValgrindStrategies(): Promise<ValgrindStrategy[]> {
     }
 }
 
-// FIX: use URL and return it
-export async function parseValgrindUrl(): Promise<string> {
-    return core.getInput('valgrind-url') || '';
+export async function parseValgrindUrl(): Promise<URL | undefined> {
+    try {
+        const input = core.getInput('valgrind-url');
+        if (input) {
+            return new URL(input);
+        } else {
+            return undefined;
+        }
+    } catch (error) {
+        throw new Error(`Invalid valgrind-url: ${(error as Error).message}`);
+    }
 }
 
-// FIX: use URL and return it
-export async function parseValgrindShaUrl(): Promise<string> {
-    return core.getInput('valgrind-sha-url') || '';
+export async function parseValgrindShaUrl(): Promise<URL | undefined> {
+    try {
+        const input = core.getInput('valgrind-sha-url');
+        if (input) {
+            return new URL(input);
+        } else {
+            return undefined;
+        }
+    } catch (error) {
+        throw new Error(`Invalid valgrind-sha-url: ${(error as Error).message}`);
+    }
 }
 
 export async function parseValgrindVersion(): Promise<Version> {
@@ -182,7 +247,7 @@ export async function parseValgrindVersion(): Promise<Version> {
     let valgrindVersion: Version;
 
     try {
-        valgrindVersionInput = core.getInput('valgrind-version') || 'latest';
+        valgrindVersionInput = core.getInput('valgrind-version') || 'auto';
         valgrindVersion = Version.fromString(valgrindVersionInput);
     } catch (error) {
         throw new Error(`Invalid valgrind-version: ${(error as Error).message} `);
@@ -195,7 +260,7 @@ export async function parseValgrindVersion(): Promise<Version> {
                 (v) => v.major >= 3 && v.minor >= 16
             );
         } catch {
-            throw new Error(`Failed to validate valgrind version`);
+            throw new Error(`Failed to validate Valgrind version`);
         }
 
         if (!validVersions.some((v) => v.equals(valgrindVersion))) {

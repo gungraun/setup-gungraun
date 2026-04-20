@@ -1,6 +1,6 @@
 import * as exec from '@actions/exec';
 import * as fs from 'fs';
-import { getCargoBin } from './utils';
+import { getCargoBin, isDebug } from './utils';
 import { ResolvedVersion } from './version';
 import { Apk, AptGet, Dnf, PackageManager, Pacman, Yum, Zypper } from './platform';
 
@@ -8,6 +8,8 @@ import { Apk, AptGet, Dnf, PackageManager, Pacman, Yum, Zypper } from './platfor
 export interface PlatformInfo {
     /** Distro identifier (e.g., "ubuntu", "alpine"). */
     id: string;
+    /** Identifiers of operating systems that are closely related to the local operating system */
+    relatedIds: string[];
     /** Distro version, or null if VERSION_ID was absent. */
     versionId: string | null;
     /** Combined platform string (e.g., "ubuntu-22.04" or "arch-unknown"). */
@@ -81,12 +83,15 @@ export async function detectPlatform(): Promise<PlatformInfo> {
 
     const id = idMatch[1].trim();
     const versionId = versionMatch ? versionMatch[1].trim() : null;
+
     const idLikeMatch = content.match(/^ID_LIKE="?(.+?)"?$/m);
     const idLike = idLikeMatch ? idLikeMatch[1].trim() : null;
+    const relatedIds = idLike?.split(' ') ?? [];
+
     const packageManager = resolvePackageManager(id, idLike);
     const platform = versionId ? `${id}-${versionId}` : `${id}-unknown`;
 
-    return { id, versionId, platform, packageManager };
+    return { id, relatedIds, versionId, platform, packageManager };
 }
 
 /** Detects the gungraun-runner version from the project's cargo metadata or pkgid. */
@@ -96,7 +101,7 @@ export async function detectProjectVersion(): Promise<ResolvedVersion> {
         const { stdout } = await exec.getExecOutput(
             getCargoBin(),
             ['metadata', '--format-version=1'],
-            { silent: true, ignoreReturnCode: true }
+            { silent: !isDebug(), ignoreReturnCode: true }
         );
         metadataStdout = stdout;
     } catch {
@@ -118,14 +123,15 @@ export async function detectProjectVersion(): Promise<ResolvedVersion> {
         if (pkgs && pkgs.length > 1) {
             const versions = pkgs.map((p: { version: string }) => p.version).join(', ');
             throw new Error(
-                `Multiple gungraun versions detected in project (${versions}). Set runner-version explicitly.`
+                `Multiple gungraun versions detected in project (${versions}). Set runner-version \
+explicitly.`
             );
         }
     }
 
     try {
         const { stdout } = await exec.getExecOutput(getCargoBin(), ['pkgid', 'gungraun'], {
-            silent: true,
+            silent: !isDebug(),
             ignoreReturnCode: true
         });
         return ResolvedVersion.fromString(stdout);
@@ -141,7 +147,7 @@ export async function detectProjectVersion(): Promise<ResolvedVersion> {
 /** Detects the Rust compiler target triple */
 export async function detectTarget(): Promise<string> {
     const { stdout } = await exec.getExecOutput('rustc', ['-vV'], {
-        silent: true
+        silent: !isDebug()
     });
     const match = stdout.match(/^host:\s*(.+)$/m);
     if (!match) {

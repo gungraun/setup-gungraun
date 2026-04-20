@@ -9,7 +9,7 @@ inputs:
     description:
       'GitHub token for API requests (avoids rate limits on release downloads)'
     required: false
-    default: ''
+    default: '${{ github.token }}'
   install-build-deps:
     description:
       'Install build dependencies before building valgrind from source'
@@ -32,6 +32,18 @@ inputs:
       'Version of gungraun-runner to install (e.g. v0.1.0, latest, auto)'
     required: false
     default: 'auto'
+  valgrind-configure-args:
+    description:
+      'The extra arguments to pass to ./configure when building valgrind from
+      source'
+    required: false
+    default: ''
+  valgrind-make-envs:
+    description:
+      'Environment variables to set when building valgrind from source (e.g.
+      "CFLAGS=--fno-stack-protector"). These apply to both ./configure and make.'
+    required: false
+    default: ''
   valgrind-sha-url:
     description:
       'The url to the sha sum used to verify the tar archive for valgrind-url'
@@ -40,9 +52,10 @@ inputs:
   valgrind-strategy:
     description:
       'Ordered comma-separated list of valgrind install strategies to try. Valid
-      values: builder, system, source, none'
+      values: builder, system, source, none. `none` will skip the valgrind
+      installation.'
     required: false
-    default: 'builder,system,source'
+    default: 'builder,source,system'
   valgrind-url:
     description:
       'The url to the tar archive containing the valgrind build for the
@@ -51,10 +64,10 @@ inputs:
     default: ''
   valgrind-version:
     description:
-      'Valgrind release tag (e.g. v0.1.1, latest) or auto which installs the the
+      'Valgrind release tag (e.g. 3.22.0, latest) or auto which installs the
       latest possible version for the strategy'
     required: false
-    default: 'latest'
+    default: 'auto'
 
 runs:
   using: 'node24'

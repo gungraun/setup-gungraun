@@ -1,5 +1,5 @@
 import { ResolvedVersion } from './version';
-import { execSudo, execSudoWithOutput } from './utils';
+import { execPrivileged, execPrivilegedWithOutput } from './utils';
 
 export interface PackageManager {
     accept<T>(v: PackageManagerVisitor<T>): T;
@@ -11,6 +11,7 @@ export interface PackageManagerVisitor<T> {
     visitApk(pm: Apk): T;
     visitAptGet(pm: AptGet): T;
     visitDnf(pm: Dnf): T;
+    visitMicroDnf(pm: MicroDnf): T;
     visitPacman(pm: Pacman): T;
     visitYum(pm: Yum): T;
     visitZypper(pm: Zypper): T;
@@ -20,7 +21,7 @@ export class Apk implements PackageManager {
     private readonly debugInfoPackages: string[] = ['musl-dbg'];
     // The busybox sed doesn't work with the configure script
     private readonly valgrindBuildDeps: string[] = [
-        'build-dev',
+        'build-base',
         'bzip2',
         'sed',
         'perl',
@@ -40,13 +41,13 @@ export class Apk implements PackageManager {
     }
 
     async updateCache(): Promise<void> {
-        await execSudo('apk', 'update');
+        await execPrivileged('apk', ['update']);
     }
 }
 
 export class AptGet implements PackageManager {
     private readonly debugInfoPackages: string[] = ['libc6-dbg'];
-    private readonly valgrindBuildDeps: string[] = ['gcc', 'make', 'bzip2'];
+    private readonly valgrindBuildDeps: string[] = ['build-essential', 'gcc', 'make', 'bzip2'];
 
     accept<T>(v: PackageManagerVisitor<T>) {
         return v.visitAptGet(this);
@@ -61,7 +62,9 @@ export class AptGet implements PackageManager {
     }
 
     async updateCache(): Promise<void> {
-        await execSudo('apt-get', 'update', '-qq');
+        await execPrivileged('apt-get', ['update', '-qq', '--allow-releaseinfo-change'], {
+            env: { DEBIAN_FRONTEND: 'noninteractive' }
+        });
     }
 }
 
@@ -93,6 +96,23 @@ export class Dnf implements PackageManager {
     }
 }
 
+export class MicroDnf extends Dnf implements PackageManager {
+    accept<T>(v: PackageManagerVisitor<T>) {
+        return v.visitMicroDnf(this);
+    }
+
+    extractVersionStrings(output: string, pkg: string): string[] | null {
+        // sample: "valgrind-1:3.25.1-3.el10.x86_64"
+        const regex = new RegExp(String.raw`^${pkg}[^\s:]*:([^\s]+).*`, 'gm');
+        const matches = [...output.matchAll(regex)];
+
+        if (matches.length === 0) {
+            return null;
+        }
+        return matches.map((m) => m[1]);
+    }
+}
+
 export class Pacman implements PackageManager {
     // Arch linux doesn't ship the debug symbols with glibc and doesn't have them as a separate
     // package. Instead, arch linux relies on debuginfod.
@@ -112,7 +132,7 @@ export class Pacman implements PackageManager {
     }
 
     async updateCache(): Promise<void> {
-        await execSudo('pacman', '-Sy');
+        await execPrivileged('pacman', ['-Sy']);
     }
 }
 
@@ -164,7 +184,9 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
     async visitAptGet(pm: AptGet) {
         await pm.updateCache();
 
-        const output = await execSudoWithOutput('apt-cache', 'policy', this.pkg);
+        const output = await execPrivilegedWithOutput('apt-cache', ['policy', this.pkg], {
+            env: { DEBIAN_FRONTEND: 'noninteractive' }
+        });
         // sample: "  Installed: (none)\n  Candidate: 1:3.15.0-1"
         const regex = new RegExp(String.raw`^\s*Candidate:\s*([^\s]+)`, 'gm');
         const matches = [...output.matchAll(regex)];
@@ -175,7 +197,7 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
     async visitApk(pm: Apk) {
         await pm.updateCache();
 
-        const output = await execSudoWithOutput('apk', 'policy', this.pkg);
+        const output = await execPrivilegedWithOutput('apk', ['policy', this.pkg]);
         // sample policy:
         // "valgrind policy:
         //    3.25.1-r2:
@@ -186,8 +208,29 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
         return FetchLatestPackageVersion.getLatestVersion(matches.map((m) => m![1]));
     }
 
-    async visitDnf(pm: Dnf) {
-        const output = await execSudoWithOutput('dnf', 'list', '--showduplicates', this.pkg);
+    async visitDnf(pm: Dnf): Promise<ResolvedVersion | null> {
+        let output: string;
+        try {
+            output = await execPrivilegedWithOutput('dnf', [
+                '--enablerepo=*-debuginfo',
+                'list',
+                '--showduplicates',
+                this.pkg
+            ]);
+        } catch {
+            return new MicroDnf().accept(new FetchLatestPackageVersion(this.pkg));
+        }
+        const matches = pm.extractVersionStrings(output, this.pkg);
+
+        return FetchLatestPackageVersion.getLatestVersion(matches);
+    }
+
+    async visitMicroDnf(pm: MicroDnf): Promise<ResolvedVersion | null> {
+        const output = await execPrivilegedWithOutput('microdnf', [
+            '--enablerepo=*-debuginfo',
+            'repoquery',
+            this.pkg
+        ]);
         const matches = pm.extractVersionStrings(output, this.pkg);
 
         return FetchLatestPackageVersion.getLatestVersion(matches);
@@ -196,7 +239,7 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
     async visitPacman(pm: Pacman) {
         await pm.updateCache();
 
-        const output = await execSudoWithOutput('pacman', '-Si', this.pkg);
+        const output = await execPrivilegedWithOutput('pacman', ['-Si', this.pkg]);
         // sample: "Version         : 3.17.0-1"
         const regex = new RegExp(String.raw`^\s*Version\s*:\s*([^\s]+)`, 'gm');
         const matches = [...output.matchAll(regex)];
@@ -207,7 +250,12 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
     async visitYum(pm: Yum): Promise<ResolvedVersion | null> {
         let output: string;
         try {
-            output = await execSudoWithOutput('yum', 'list', '--showduplicates', this.pkg);
+            output = await execPrivilegedWithOutput('yum', [
+                '--enablerepo=*-debuginfo',
+                'list',
+                '--showduplicates',
+                this.pkg
+            ]);
         } catch {
             return new Dnf().accept(new FetchLatestPackageVersion(this.pkg));
         }
@@ -217,7 +265,7 @@ export class FetchLatestPackageVersion implements PackageManagerVisitor<
     }
 
     async visitZypper(_pm: Zypper) {
-        const output = await execSudoWithOutput('zypper', 'info', this.pkg);
+        const output = await execPrivilegedWithOutput('zypper', ['info', this.pkg]);
         // sample: "Version   : 3.17.0-1.1"
         const regex = new RegExp(String.raw`^\s*Version\s*:\s*([^\s]+)`, 'gm');
         const matches = [...output.matchAll(regex)];
@@ -240,34 +288,63 @@ export class PackagesInstaller implements PackageManagerVisitor<Promise<void>> {
     async visitAptGet(pm: AptGet): Promise<void> {
         if (this.hasPackages()) {
             await pm.updateCache();
-            await execSudoWithOutput('apt-get', 'install', '-y', ...this.pkgs);
+            await execPrivilegedWithOutput(
+                'apt-get',
+                ['install', '-y', '--no-install-recommends', ...this.pkgs],
+                { env: { DEBIAN_FRONTEND: 'noninteractive' } }
+            );
         }
     }
 
     async visitApk(pm: Apk): Promise<void> {
         if (this.hasPackages()) {
             await pm.updateCache();
-            await execSudoWithOutput('apk', 'add', '--interactive=no', ...this.pkgs);
+            await execPrivilegedWithOutput('apk', ['add', ...this.pkgs]);
         }
     }
 
     async visitDnf(_pm: Dnf): Promise<void> {
         if (this.hasPackages()) {
-            await execSudoWithOutput('dnf', 'install', '-y', ...this.pkgs);
+            try {
+                await execPrivilegedWithOutput('dnf', [
+                    '--enablerepo=*-debuginfo',
+                    'install',
+                    '-y',
+                    ...this.pkgs
+                ]);
+            } catch {
+                return new MicroDnf().accept(new PackagesInstaller(...this.pkgs));
+            }
+        }
+    }
+
+    async visitMicroDnf(_pm: MicroDnf): Promise<void> {
+        if (this.hasPackages()) {
+            await execPrivilegedWithOutput('microdnf', [
+                '--enablerepo=*-debuginfo',
+                'install',
+                '-y',
+                ...this.pkgs
+            ]);
         }
     }
 
     async visitPacman(pm: Pacman): Promise<void> {
         if (this.hasPackages()) {
             await pm.updateCache();
-            await execSudoWithOutput('pacman', '-S', '--noconfirm', ...this.pkgs);
+            await execPrivilegedWithOutput('pacman', ['-S', '--noconfirm', ...this.pkgs]);
         }
     }
 
     async visitYum(_pm: Yum): Promise<void> {
         if (this.hasPackages()) {
             try {
-                await execSudoWithOutput('yum', 'install', '-y', ...this.pkgs);
+                await execPrivilegedWithOutput('yum', [
+                    '--enablerepo=*-debuginfo',
+                    'install',
+                    '-y',
+                    ...this.pkgs
+                ]);
             } catch {
                 return new Dnf().accept(new PackagesInstaller(...this.pkgs));
             }
@@ -276,14 +353,13 @@ export class PackagesInstaller implements PackageManagerVisitor<Promise<void>> {
 
     async visitZypper(_pm: Zypper): Promise<void> {
         if (this.hasPackages()) {
-            await execSudoWithOutput(
-                'zypper',
+            await execPrivilegedWithOutput('zypper', [
                 '--non-interactive',
                 '--plus-content',
                 'debug',
                 'install',
                 ...this.pkgs
-            );
+            ] as string[]);
         }
     }
 }

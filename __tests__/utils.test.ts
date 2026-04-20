@@ -45,30 +45,204 @@ describe('escapeRegex', () => {
     });
 });
 
-describe('execSudoWithOutput', () => {
-    it('calls exec.getExecOutput with sudo and returns stdout', async () => {
+describe('isRoot', () => {
+    it('when uid is 0 then returns true', () => {
+        jest.spyOn(process, 'getuid').mockReturnValue(0);
+        expect(utils.isRoot()).toBe(true);
+    });
+
+    it('when uid is non-zero then returns false', () => {
+        jest.spyOn(process, 'getuid').mockReturnValue(1000);
+        expect(utils.isRoot()).toBe(false);
+    });
+});
+
+describe('isDebug', () => {
+    it('returns false when GUNGRAUN_ACTION_DEBUG is not set', () => {
+        jest.replaceProperty(process, 'env', { ...process.env });
+        delete (process.env as Record<string, string | undefined>).GUNGRAUN_ACTION_DEBUG;
+        expect(utils.isDebug()).toBe(false);
+        jest.restoreAllMocks();
+    });
+
+    it('returns true when GUNGRAUN_ACTION_DEBUG is set to yes', () => {
+        jest.replaceProperty(process, 'env', { ...process.env, GUNGRAUN_ACTION_DEBUG: 'yes' });
+        expect(utils.isDebug()).toBe(true);
+        jest.restoreAllMocks();
+    });
+
+    it('returns true when GUNGRAUN_ACTION_DEBUG is set to any non-empty string', () => {
+        jest.replaceProperty(process, 'env', { ...process.env, GUNGRAUN_ACTION_DEBUG: '1' });
+        expect(utils.isDebug()).toBe(true);
+        jest.restoreAllMocks();
+    });
+});
+
+describe('execPrivilegedWithOutput', () => {
+    it('calls exec.getExecOutput with sudo when not root', async () => {
+        jest.spyOn(process, 'getuid').mockReturnValue(1000);
         (exec.getExecOutput as jest.Mock).mockResolvedValue({
             stdout: 'output'
         });
 
-        const result = await utils.execSudoWithOutput('cmd', 'arg1', 'arg2');
+        const result = await utils.execPrivilegedWithOutput('cmd', ['arg1', 'arg2']);
 
         expect(exec.getExecOutput).toHaveBeenCalledWith('sudo', ['cmd', 'arg1', 'arg2'], {
             silent: true
         });
         expect(result).toBe('output');
     });
+
+    it('calls exec.getExecOutput without sudo when root', async () => {
+        jest.spyOn(process, 'getuid').mockReturnValue(0);
+        (exec.getExecOutput as jest.Mock).mockResolvedValue({
+            stdout: 'output'
+        });
+
+        const result = await utils.execPrivilegedWithOutput('cmd', ['arg1', 'arg2']);
+
+        expect(exec.getExecOutput).toHaveBeenCalledWith('cmd', ['arg1', 'arg2'], {
+            silent: true
+        });
+        expect(result).toBe('output');
+    });
+
+    it('passes env option when provided and not root', async () => {
+        jest.spyOn(process, 'getuid').mockReturnValue(1000);
+        (exec.getExecOutput as jest.Mock).mockResolvedValue({
+            stdout: 'output'
+        });
+
+        await utils.execPrivilegedWithOutput('apt-get', ['install', '-y', 'pkg'], {
+            env: { DEBIAN_FRONTEND: 'noninteractive' }
+        });
+
+        expect(exec.getExecOutput).toHaveBeenCalledWith(
+            'sudo',
+            ['apt-get', 'install', '-y', 'pkg'],
+            {
+                silent: true,
+                env: expect.objectContaining({ DEBIAN_FRONTEND: 'noninteractive' })
+            }
+        );
+    });
+
+    it('passes env option when provided and root', async () => {
+        jest.spyOn(process, 'getuid').mockReturnValue(0);
+        (exec.getExecOutput as jest.Mock).mockResolvedValue({
+            stdout: 'output'
+        });
+
+        await utils.execPrivilegedWithOutput('apt-get', ['install', '-y', 'pkg'], {
+            env: { DEBIAN_FRONTEND: 'noninteractive' }
+        });
+
+        expect(exec.getExecOutput).toHaveBeenCalledWith('apt-get', ['install', '-y', 'pkg'], {
+            silent: true,
+            env: expect.objectContaining({ DEBIAN_FRONTEND: 'noninteractive' })
+        });
+    });
+
+    it('sets silent to false when GUNGRAUN_ACTION_DEBUG is set', async () => {
+        jest.replaceProperty(process, 'env', { ...process.env, GUNGRAUN_ACTION_DEBUG: 'yes' });
+        jest.spyOn(process, 'getuid').mockReturnValue(1000);
+        (exec.getExecOutput as jest.Mock).mockResolvedValue({ stdout: 'out' });
+
+        await utils.execPrivilegedWithOutput('cmd', ['arg']);
+
+        expect(exec.getExecOutput).toHaveBeenCalledWith('sudo', ['cmd', 'arg'], {
+            silent: false
+        });
+        jest.restoreAllMocks();
+    });
 });
 
-describe('execSudo', () => {
-    it('calls exec.exec with sudo', async () => {
+describe('execPrivileged', () => {
+    it('calls exec.exec with sudo when not root', async () => {
+        jest.spyOn(process, 'getuid').mockReturnValue(1000);
         (exec.exec as jest.Mock).mockResolvedValue(0);
 
-        await utils.execSudo('cmd', 'arg1', 'arg2');
+        await utils.execPrivileged('cmd', ['arg1', 'arg2']);
 
         expect(exec.exec).toHaveBeenCalledWith('sudo', ['cmd', 'arg1', 'arg2'], {
             silent: true
         });
+    });
+
+    it('calls exec.exec without sudo when root', async () => {
+        jest.spyOn(process, 'getuid').mockReturnValue(0);
+        (exec.exec as jest.Mock).mockResolvedValue(0);
+
+        await utils.execPrivileged('cmd', ['arg1', 'arg2']);
+
+        expect(exec.exec).toHaveBeenCalledWith('cmd', ['arg1', 'arg2'], {
+            silent: true
+        });
+    });
+
+    it('passes cwd option when not root', async () => {
+        jest.spyOn(process, 'getuid').mockReturnValue(1000);
+        (exec.exec as jest.Mock).mockResolvedValue(0);
+
+        await utils.execPrivileged('make', ['install'], { cwd: '/src' });
+
+        expect(exec.exec).toHaveBeenCalledWith('sudo', ['make', 'install'], {
+            silent: true,
+            cwd: '/src'
+        });
+    });
+
+    it('passes cwd option when root', async () => {
+        jest.spyOn(process, 'getuid').mockReturnValue(0);
+        (exec.exec as jest.Mock).mockResolvedValue(0);
+
+        await utils.execPrivileged('make', ['install'], { cwd: '/src' });
+
+        expect(exec.exec).toHaveBeenCalledWith('make', ['install'], {
+            silent: true,
+            cwd: '/src'
+        });
+    });
+
+    it('passes env option when not root', async () => {
+        jest.spyOn(process, 'getuid').mockReturnValue(1000);
+        (exec.exec as jest.Mock).mockResolvedValue(0);
+
+        await utils.execPrivileged('apt-get', ['update'], {
+            env: { DEBIAN_FRONTEND: 'noninteractive' }
+        });
+
+        expect(exec.exec).toHaveBeenCalledWith('sudo', ['apt-get', 'update'], {
+            silent: true,
+            env: expect.objectContaining({ DEBIAN_FRONTEND: 'noninteractive' })
+        });
+    });
+
+    it('passes env option when root', async () => {
+        jest.spyOn(process, 'getuid').mockReturnValue(0);
+        (exec.exec as jest.Mock).mockResolvedValue(0);
+
+        await utils.execPrivileged('apt-get', ['update'], {
+            env: { DEBIAN_FRONTEND: 'noninteractive' }
+        });
+
+        expect(exec.exec).toHaveBeenCalledWith('apt-get', ['update'], {
+            silent: true,
+            env: expect.objectContaining({ DEBIAN_FRONTEND: 'noninteractive' })
+        });
+    });
+
+    it('sets silent to false when GUNGRAUN_ACTION_DEBUG is set', async () => {
+        jest.replaceProperty(process, 'env', { ...process.env, GUNGRAUN_ACTION_DEBUG: 'yes' });
+        jest.spyOn(process, 'getuid').mockReturnValue(1000);
+        (exec.exec as jest.Mock).mockResolvedValue(0);
+
+        await utils.execPrivileged('cmd', ['arg']);
+
+        expect(exec.exec).toHaveBeenCalledWith('sudo', ['cmd', 'arg'], {
+            silent: false
+        });
+        jest.restoreAllMocks();
     });
 });
 
@@ -124,23 +298,7 @@ describe('logInstalledVersion', () => {
         expect(core.info).toHaveBeenCalledWith('label installed: binary 1.2.3');
     });
 
-    it('uses fallback when stdout is empty', async () => {
-        (exec.getExecOutput as jest.Mock).mockResolvedValue({ stdout: '' });
-
-        await utils.logInstalledVersion('binary', 'label', 'fallback');
-
-        expect(core.info).toHaveBeenCalledWith('label installed: fallback');
-    });
-
-    it('uses fallback when stdout contains only whitespace', async () => {
-        (exec.getExecOutput as jest.Mock).mockResolvedValue({ stdout: '   \n' });
-
-        await utils.logInstalledVersion('binary', 'label', 'fallback');
-
-        expect(core.info).toHaveBeenCalledWith('label installed: fallback');
-    });
-
-    it("defaults to 'version unknown' when stdout and fallback are empty", async () => {
+    it("defaults to 'version unknown' when stdout is empty", async () => {
         (exec.getExecOutput as jest.Mock).mockResolvedValue({ stdout: '' });
 
         await utils.logInstalledVersion('binary', 'label');

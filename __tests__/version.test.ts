@@ -146,6 +146,44 @@ describe('Version from a tag when invalid', () => {
     });
 });
 
+describe('Version constructor with unsafe numbers', () => {
+    it('when major exceeds MAX_SAFE_INTEGER then throws', () => {
+        expect(() => new Version(Number.MAX_SAFE_INTEGER + 1, 0, 0)).toThrow(
+            'A version cannot be represented by an unsafe number'
+        );
+    });
+
+    it('when minor exceeds MAX_SAFE_INTEGER then throws', () => {
+        expect(() => new Version(0, Number.MAX_SAFE_INTEGER + 1, 0)).toThrow(
+            'A version cannot be represented by an unsafe number'
+        );
+    });
+
+    it('when patch exceeds MAX_SAFE_INTEGER then throws', () => {
+        expect(() => new Version(0, 0, Number.MAX_SAFE_INTEGER + 1)).toThrow(
+            'A version cannot be represented by an unsafe number'
+        );
+    });
+
+    it('when major is NaN then throws', () => {
+        expect(() => new Version(NaN, 0, 0)).toThrow(
+            'A version cannot be represented by an unsafe number'
+        );
+    });
+
+    it('when minor is a float then throws', () => {
+        expect(() => new Version(0, 1.5, 0)).toThrow(
+            'A version cannot be represented by an unsafe number'
+        );
+    });
+
+    it('when major is Infinity then throws', () => {
+        expect(() => new Version(Infinity, 0, 0)).toThrow(
+            'A version cannot be represented by an unsafe number'
+        );
+    });
+});
+
 describe('Version latest and auto', () => {
     it('isLatest returns true', () => {
         expect(Version.latest().isLatest()).toBe(true);

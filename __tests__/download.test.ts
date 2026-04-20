@@ -16,7 +16,8 @@ jest.mock('../src/hash');
 jest.mock('../src/resolve');
 jest.mock('../src/utils', () => ({
     GUNGRAUN_REPO: 'gungraun/gungraun',
-    VALGRIND_BUILDER_REPO: 'gungraun/valgrind-builder'
+    VALGRIND_BUILDER_REPO: 'gungraun/valgrind-builder',
+    retry: jest.fn((_n: number, fn: () => Promise<unknown>) => fn())
 }));
 
 afterEach(() => {

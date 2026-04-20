@@ -8,7 +8,8 @@ import {
     Yum,
     Zypper,
     FetchLatestPackageVersion,
-    PackagesInstaller
+    PackagesInstaller,
+    MicroDnf
 } from '../src/platform';
 import { ResolvedVersion } from '../src/version';
 
@@ -25,6 +26,9 @@ class TestVisitor implements PackageManagerVisitor<string> {
     }
     visitDnf(_pm: Dnf): string {
         return 'dnf';
+    }
+    visitMicroDnf(_pm: MicroDnf): string {
+        return 'microdnf';
     }
     visitPacman(_pm: Pacman): string {
         return 'pacman';
@@ -46,7 +50,7 @@ describe('Apk', () => {
 
     it('when getting valgrind build deps', () => {
         expect(pm.getValgrindBuildDeps()).toEqual([
-            'build-dev',
+            'build-base',
             'bzip2',
             'sed',
             'perl',
@@ -59,11 +63,11 @@ describe('Apk', () => {
     });
 
     it('when updating cache', async () => {
-        (utils.execSudo as jest.Mock).mockResolvedValue(undefined);
+        (utils.execPrivileged as jest.Mock).mockResolvedValue(undefined);
 
         await pm.updateCache();
 
-        expect(utils.execSudo).toHaveBeenCalledWith('apk', 'update');
+        expect(utils.execPrivileged).toHaveBeenCalledWith('apk', ['update']);
     });
 });
 
@@ -75,7 +79,7 @@ describe('AptGet', () => {
     });
 
     it('when getting valgrind build deps', () => {
-        expect(pm.getValgrindBuildDeps()).toEqual(['gcc', 'make', 'bzip2']);
+        expect(pm.getValgrindBuildDeps()).toEqual(['build-essential', 'gcc', 'make', 'bzip2']);
     });
 
     it('when accepting a visitor', () => {
@@ -83,9 +87,15 @@ describe('AptGet', () => {
     });
 
     it('when updating cache', async () => {
-        (utils.execSudo as jest.Mock).mockResolvedValue(undefined);
+        (utils.execPrivileged as jest.Mock).mockResolvedValue(undefined);
         await pm.updateCache();
-        expect(utils.execSudo).toHaveBeenCalledWith('apt-get', 'update', '-qq');
+        expect(utils.execPrivileged).toHaveBeenCalledWith(
+            'apt-get',
+            ['update', '-qq', '--allow-releaseinfo-change'],
+            {
+                env: { DEBIAN_FRONTEND: 'noninteractive' }
+            }
+        );
     });
 });
 
@@ -116,6 +126,44 @@ describe('Dnf', () => {
     });
 });
 
+describe('MicroDnf', () => {
+    const pm = new MicroDnf();
+
+    it('when accepting a visitor', () => {
+        expect(pm.accept(new TestVisitor())).toBe('microdnf');
+    });
+
+    it('when getting debug info packages then inherits from Dnf', () => {
+        expect(pm.getDebugInfoPackages()).toEqual(['glibc-debuginfo']);
+    });
+
+    it('when getting valgrind build deps then inherits from Dnf', () => {
+        expect(pm.getValgrindBuildDeps()).toEqual(['gcc', 'make', 'bzip2']);
+    });
+
+    describe('extractVersionStrings', () => {
+        it('when typical microdnf version output', () => {
+            const output = 'valgrind-1:3.25.1-3.el10.x86_64';
+            expect(pm.extractVersionStrings(output, 'valgrind')).toEqual(['3.25.1-3.el10.x86_64']);
+        });
+
+        it('when multiple versions', () => {
+            const output = `valgrind-1:3.15.0-1.el10.x86_64
+valgrind-1:3.25.1-3.el10.x86_64
+valgrind-1:3.17.0-1.el10.x86_64`;
+            expect(pm.extractVersionStrings(output, 'valgrind')).toEqual([
+                '3.15.0-1.el10.x86_64',
+                '3.25.1-3.el10.x86_64',
+                '3.17.0-1.el10.x86_64'
+            ]);
+        });
+
+        it('when package is not found then returns null', () => {
+            expect(pm.extractVersionStrings('no match here', 'valgrind')).toBeNull();
+        });
+    });
+});
+
 describe('Pacman', () => {
     const pm = new Pacman();
 
@@ -132,11 +180,11 @@ describe('Pacman', () => {
     });
 
     it('when updating cache', async () => {
-        (utils.execSudo as jest.Mock).mockResolvedValue(undefined);
+        (utils.execPrivileged as jest.Mock).mockResolvedValue(undefined);
 
         await pm.updateCache();
 
-        expect(utils.execSudo).toHaveBeenCalledWith('pacman', '-Sy');
+        expect(utils.execPrivileged).toHaveBeenCalledWith('pacman', ['-Sy']);
     });
 });
 
@@ -200,7 +248,7 @@ describe('FetchLatestPackageVersion visitAptGet', () => {
     const mockAptGet = { updateCache: jest.fn().mockResolvedValue(undefined) } as unknown as AptGet;
 
     it('when there is a single version', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue(
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue(
             '  Installed: (none)\n  Candidate: 1:3.15.0-1\n'
         );
 
@@ -210,11 +258,15 @@ describe('FetchLatestPackageVersion visitAptGet', () => {
         );
 
         expect(mockAptGet.updateCache).toHaveBeenCalled();
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith('apt-cache', 'policy', 'valgrind');
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith(
+            'apt-cache',
+            ['policy', 'valgrind'],
+            { env: { DEBIAN_FRONTEND: 'noninteractive' } }
+        );
     });
 
     it('when there are multiple versions', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue(
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue(
             `  Installed: (none)
   Candidate: 1:3.15.0-1
   Installed: (none)
@@ -227,11 +279,15 @@ describe('FetchLatestPackageVersion visitAptGet', () => {
         );
 
         expect(mockAptGet.updateCache).toHaveBeenCalled();
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith('apt-cache', 'policy', 'valgrind');
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith(
+            'apt-cache',
+            ['policy', 'valgrind'],
+            { env: { DEBIAN_FRONTEND: 'noninteractive' } }
+        );
     });
 
     it('when there is no version in the output then returns null', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue('no match');
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue('no match');
 
         const visitor = new FetchLatestPackageVersion('valgrind');
         const result = await visitor.visitAptGet(mockAptGet);
@@ -245,7 +301,7 @@ describe('FetchLatestPackageVersion visitApk', () => {
     const mockApk = { updateCache: jest.fn().mockResolvedValue(undefined) } as unknown as Apk;
 
     it('when there is a single version', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue(
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue(
             'valgrind policy:\n  3.25.1-r2:\n    https://dl-cdn.alpinelinux.org/alpine/v3.23/main\n'
         );
 
@@ -253,13 +309,11 @@ describe('FetchLatestPackageVersion visitApk', () => {
         await visitor.visitApk(mockApk);
 
         expect(mockApk.updateCache).toHaveBeenCalled();
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith('apk', 'policy', 'valgrind');
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('apk', ['policy', 'valgrind']);
     });
 
-    // This doesn't have to reflect the actual output. I haven't found a real-world example with
-    // multiple versions. The test simply verifies that multiple versions are parsed.
     it('when there are multiple version', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue(
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue(
             `valgrind policy:
   3.25.1-r2:
     https://dl-cdn.alpinelinux.org/alpine/v3.23/main
@@ -275,11 +329,11 @@ valgrind policy:
         await expect(visitor.visitApk(mockApk)).resolves.toEqual(new ResolvedVersion(3, 26, 1));
 
         expect(mockApk.updateCache).toHaveBeenCalled();
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith('apk', 'policy', 'valgrind');
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('apk', ['policy', 'valgrind']);
     });
 
     it('when no version in output then returns null', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue('no match');
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue('no match');
 
         const visitor = new FetchLatestPackageVersion('valgrind');
         const result = await visitor.visitApk(mockApk);
@@ -290,23 +344,23 @@ valgrind policy:
 
 describe('FetchLatestPackageVersion visitDnf', () => {
     it('when there is a single version', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue(
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue(
             'valgrind.x86_64   3.17.0-1.fc34   updates\n'
         );
 
         const visitor = new FetchLatestPackageVersion('valgrind');
         await expect(visitor.visitDnf(new Dnf())).resolves.toEqual(new ResolvedVersion(3, 17, 0));
 
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith(
-            'dnf',
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('dnf', [
+            '--enablerepo=*-debuginfo',
             'list',
             '--showduplicates',
             'valgrind'
-        );
+        ]);
     });
 
     it('when there are multiple versions', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue(
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue(
             `valgrind.x86_64   3.16.0-1.fc34   updates
 valgrind.x86_64   3.17.0-9.fc22   updates
 valgrind.x86_64   3.15.0-1.fc29   updates`
@@ -315,19 +369,88 @@ valgrind.x86_64   3.15.0-1.fc29   updates`
         const visitor = new FetchLatestPackageVersion('valgrind');
         await expect(visitor.visitDnf(new Dnf())).resolves.toEqual(new ResolvedVersion(3, 17, 0));
 
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith(
-            'dnf',
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('dnf', [
+            '--enablerepo=*-debuginfo',
             'list',
             '--showduplicates',
             'valgrind'
-        );
+        ]);
     });
 
     it('when regex does not match output then returns null', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue('no match');
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue('no match');
 
         const visitor = new FetchLatestPackageVersion('valgrind');
         const result = await visitor.visitDnf(new Dnf());
+
+        expect(result).toBeNull();
+    });
+
+    it('when dnf command fails then falls back to microdnf', async () => {
+        (utils.execPrivilegedWithOutput as jest.Mock)
+            .mockRejectedValueOnce(new Error('dnf not found'))
+            .mockResolvedValueOnce('valgrind-1:3.25.1-3.el10.x86_64\n');
+
+        const visitor = new FetchLatestPackageVersion('valgrind');
+        await expect(visitor.visitDnf(new Dnf())).resolves.toEqual(new ResolvedVersion(3, 25, 1));
+
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledTimes(2);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(1, 'dnf', [
+            '--enablerepo=*-debuginfo',
+            'list',
+            '--showduplicates',
+            'valgrind'
+        ]);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(2, 'microdnf', [
+            '--enablerepo=*-debuginfo',
+            'repoquery',
+            'valgrind'
+        ]);
+    });
+});
+
+describe('FetchLatestPackageVersion visitMicroDnf', () => {
+    it('when there is a single version', async () => {
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue(
+            'valgrind-1:3.25.1-3.el10.x86_64\n'
+        );
+
+        const visitor = new FetchLatestPackageVersion('valgrind');
+        await expect(visitor.visitMicroDnf(new MicroDnf())).resolves.toEqual(
+            new ResolvedVersion(3, 25, 1)
+        );
+
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('microdnf', [
+            '--enablerepo=*-debuginfo',
+            'repoquery',
+            'valgrind'
+        ]);
+    });
+
+    it('when there are multiple versions', async () => {
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue(
+            `valgrind-1:3.15.0-1.el10.x86_64
+valgrind-1:3.25.1-3.el10.x86_64
+valgrind-1:3.17.0-1.el10.x86_64`
+        );
+
+        const visitor = new FetchLatestPackageVersion('valgrind');
+        await expect(visitor.visitMicroDnf(new MicroDnf())).resolves.toEqual(
+            new ResolvedVersion(3, 25, 1)
+        );
+
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('microdnf', [
+            '--enablerepo=*-debuginfo',
+            'repoquery',
+            'valgrind'
+        ]);
+    });
+
+    it('when regex does not match output then returns null', async () => {
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue('no match');
+
+        const visitor = new FetchLatestPackageVersion('valgrind');
+        const result = await visitor.visitMicroDnf(new MicroDnf());
 
         expect(result).toBeNull();
     });
@@ -337,7 +460,9 @@ describe('FetchLatestPackageVersion visitPacman', () => {
     const mockPacman = { updateCache: jest.fn().mockResolvedValue(undefined) } as unknown as Pacman;
 
     it('when there is a single version', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue('Version         : 3.17.0-1\n');
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue(
+            'Version         : 3.17.0-1\n'
+        );
 
         const visitor = new FetchLatestPackageVersion('valgrind');
         await expect(visitor.visitPacman(mockPacman)).resolves.toEqual(
@@ -345,11 +470,11 @@ describe('FetchLatestPackageVersion visitPacman', () => {
         );
 
         expect(mockPacman.updateCache).toHaveBeenCalled();
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith('pacman', '-Si', 'valgrind');
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('pacman', ['-Si', 'valgrind']);
     });
 
     it('when there are multiple versions', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue(`Version         : 3.17.0-1
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue(`Version         : 3.17.0-1
 Version         : 3.18.3-9
 Version         : 3.15.2-0`);
 
@@ -359,11 +484,11 @@ Version         : 3.15.2-0`);
         );
 
         expect(mockPacman.updateCache).toHaveBeenCalled();
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith('pacman', '-Si', 'valgrind');
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('pacman', ['-Si', 'valgrind']);
     });
 
     it('when regex does not match output then returns null', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue('no match');
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue('no match');
 
         const visitor = new FetchLatestPackageVersion('valgrind');
         const result = await visitor.visitPacman(mockPacman);
@@ -378,60 +503,58 @@ describe('FetchLatestPackageVersion visitYum', () => {
             extractVersionStrings: jest.fn().mockReturnValue(['3.17.0-1.fc34'])
         } as unknown as Yum;
         const output = 'valgrind.x86_64   3.17.0-1.fc34   updates\n';
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue(output);
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue(output);
 
         const visitor = new FetchLatestPackageVersion('valgrind');
         await expect(visitor.visitYum(mockYum)).resolves.toEqual(new ResolvedVersion(3, 17, 0));
 
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith(
-            'yum',
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('yum', [
+            '--enablerepo=*-debuginfo',
             'list',
             '--showduplicates',
             'valgrind'
-        );
+        ]);
         expect(mockYum.extractVersionStrings).toHaveBeenCalledWith(output, 'valgrind');
     });
 
     it('when yum execution fails then falls back to dnf', async () => {
-        (utils.execSudoWithOutput as jest.Mock)
+        (utils.execPrivilegedWithOutput as jest.Mock)
             .mockRejectedValueOnce(new Error('yum not found'))
             .mockResolvedValueOnce('valgrind.x86_64   3.17.0-1.fc34   updates\n');
 
         const visitor = new FetchLatestPackageVersion('valgrind');
         await expect(visitor.visitYum(new Yum())).resolves.toEqual(new ResolvedVersion(3, 17, 0));
 
-        expect(utils.execSudoWithOutput).toHaveBeenCalledTimes(2);
-        expect(utils.execSudoWithOutput).toHaveBeenNthCalledWith(
-            1,
-            'yum',
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledTimes(2);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(1, 'yum', [
+            '--enablerepo=*-debuginfo',
             'list',
             '--showduplicates',
             'valgrind'
-        );
-        expect(utils.execSudoWithOutput).toHaveBeenNthCalledWith(
-            2,
-            'dnf',
+        ]);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(2, 'dnf', [
+            '--enablerepo=*-debuginfo',
             'list',
             '--showduplicates',
             'valgrind'
-        );
+        ]);
     });
 });
 
 describe('FetchLatestPackageVersion visitZypper', () => {
     it('when there is a single version', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue('Version   : 3.17.0-1.1\n');
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue('Version   : 3.17.0-1.1\n');
 
         const visitor = new FetchLatestPackageVersion('valgrind');
         await expect(visitor.visitZypper(new Zypper())).resolves.toEqual(
             new ResolvedVersion(3, 17, 0)
         );
 
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith('zypper', 'info', 'valgrind');
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('zypper', ['info', 'valgrind']);
     });
 
     it('when there are multiple versions', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue(`Version   : 3.17.0-1.1
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue(`Version   : 3.17.0-1.1
 Version   : 3.18.0-1.1
 Version   : 3.15.0-1.1`);
 
@@ -440,11 +563,11 @@ Version   : 3.15.0-1.1`);
             new ResolvedVersion(3, 18, 0)
         );
 
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith('zypper', 'info', 'valgrind');
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('zypper', ['info', 'valgrind']);
     });
 
     it('when regex does not match output then returns null', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue('no match');
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue('no match');
 
         const visitor = new FetchLatestPackageVersion('valgrind');
         const result = await visitor.visitZypper(new Zypper());
@@ -477,23 +600,21 @@ describe('PackagesInstaller visitAptGet', () => {
     it('when no packages then skips installation', async () => {
         const installer = new PackagesInstaller();
         await installer.visitAptGet(mockAptGet);
-        expect(utils.execSudo).not.toHaveBeenCalled();
-        expect(utils.execSudoWithOutput).not.toHaveBeenCalled();
+        expect(utils.execPrivileged).not.toHaveBeenCalled();
+        expect(utils.execPrivilegedWithOutput).not.toHaveBeenCalled();
     });
 
     it('when there are packages then installs them', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue('');
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue('');
 
         const installer = new PackagesInstaller('pkg1', 'pkg2');
         await installer.visitAptGet(mockAptGet);
 
         expect(mockAptGet.updateCache).toHaveBeenCalled();
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith(
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith(
             'apt-get',
-            'install',
-            '-y',
-            'pkg1',
-            'pkg2'
+            ['install', '-y', '--no-install-recommends', 'pkg1', 'pkg2'],
+            { env: { DEBIAN_FRONTEND: 'noninteractive' } }
         );
     });
 });
@@ -504,23 +625,18 @@ describe('PackagesInstaller visitApk', () => {
     it('when no packages then skips installation', async () => {
         const installer = new PackagesInstaller();
         await installer.visitApk(mockApk);
-        expect(utils.execSudo).not.toHaveBeenCalled();
-        expect(utils.execSudoWithOutput).not.toHaveBeenCalled();
+        expect(utils.execPrivileged).not.toHaveBeenCalled();
+        expect(utils.execPrivilegedWithOutput).not.toHaveBeenCalled();
     });
 
     it('when there are packages then installs them', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue('');
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue('');
 
         const installer = new PackagesInstaller('musl-dbg');
         await installer.visitApk(mockApk);
 
         expect(mockApk.updateCache).toHaveBeenCalled();
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith(
-            'apk',
-            'add',
-            '--interactive=no',
-            'musl-dbg'
-        );
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('apk', ['add', 'musl-dbg']);
     });
 });
 
@@ -528,21 +644,66 @@ describe('PackagesInstaller visitDnf', () => {
     it('when there are no packages then skips installation', async () => {
         const installer = new PackagesInstaller();
         await installer.visitDnf(new Dnf());
-        expect(utils.execSudoWithOutput).not.toHaveBeenCalled();
+        expect(utils.execPrivilegedWithOutput).not.toHaveBeenCalled();
     });
 
     it('when there are packages then installs them', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue('');
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue('');
 
         const installer = new PackagesInstaller('glibc-debuginfo');
         await installer.visitDnf(new Dnf());
 
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith(
-            'dnf',
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('dnf', [
+            '--enablerepo=*-debuginfo',
             'install',
             '-y',
             'glibc-debuginfo'
-        );
+        ]);
+    });
+
+    it('when dnf install fails then falls back to microdnf', async () => {
+        (utils.execPrivilegedWithOutput as jest.Mock)
+            .mockRejectedValueOnce(new Error('dnf not found'))
+            .mockResolvedValueOnce('');
+
+        const installer = new PackagesInstaller('pkg1');
+        await installer.visitDnf(new Dnf());
+
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledTimes(2);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(1, 'dnf', [
+            '--enablerepo=*-debuginfo',
+            'install',
+            '-y',
+            'pkg1'
+        ]);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(2, 'microdnf', [
+            '--enablerepo=*-debuginfo',
+            'install',
+            '-y',
+            'pkg1'
+        ]);
+    });
+});
+
+describe('PackagesInstaller visitMicroDnf', () => {
+    it('when no packages then skips installation', async () => {
+        const installer = new PackagesInstaller();
+        await installer.visitMicroDnf(new MicroDnf());
+        expect(utils.execPrivilegedWithOutput).not.toHaveBeenCalled();
+    });
+
+    it('when there are packages then installs them', async () => {
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue('');
+
+        const installer = new PackagesInstaller('glibc-debuginfo');
+        await installer.visitMicroDnf(new MicroDnf());
+
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('microdnf', [
+            '--enablerepo=*-debuginfo',
+            'install',
+            '-y',
+            'glibc-debuginfo'
+        ]);
     });
 });
 
@@ -554,23 +715,22 @@ describe('PackagesInstaller visitPacman', () => {
     it('when no packages then skips installation', async () => {
         const installer = new PackagesInstaller();
         await installer.visitPacman(mockPacman);
-        expect(utils.execSudo).not.toHaveBeenCalled();
-        expect(utils.execSudoWithOutput).not.toHaveBeenCalled();
+        expect(utils.execPrivileged).not.toHaveBeenCalled();
+        expect(utils.execPrivilegedWithOutput).not.toHaveBeenCalled();
     });
 
     it('when there are packages then installs them', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue('');
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue('');
 
         const installer = new PackagesInstaller('debuginfod');
         await installer.visitPacman(mockPacman);
 
         expect(mockPacman.updateCache).toHaveBeenCalled();
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith(
-            'pacman',
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('pacman', [
             '-S',
             '--noconfirm',
             'debuginfod'
-        );
+        ]);
     });
 });
 
@@ -578,29 +738,44 @@ describe('PackagesInstaller visitYum', () => {
     it('when no packages then skips installation', async () => {
         const installer = new PackagesInstaller();
         await installer.visitYum(new Yum());
-        expect(utils.execSudoWithOutput).not.toHaveBeenCalled();
+        expect(utils.execPrivilegedWithOutput).not.toHaveBeenCalled();
     });
 
     it('when there are packages then installs them', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue('');
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue('');
 
         const installer = new PackagesInstaller('pkg1');
         await installer.visitYum(new Yum());
 
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith('yum', 'install', '-y', 'pkg1');
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('yum', [
+            '--enablerepo=*-debuginfo',
+            'install',
+            '-y',
+            'pkg1'
+        ]);
     });
 
     it('when yum fails then falls back to dnf', async () => {
-        (utils.execSudoWithOutput as jest.Mock)
+        (utils.execPrivilegedWithOutput as jest.Mock)
             .mockRejectedValueOnce(new Error('yum not found'))
             .mockResolvedValueOnce('');
 
         const installer = new PackagesInstaller('pkg1');
         await installer.visitYum(new Yum());
 
-        expect(utils.execSudoWithOutput).toHaveBeenCalledTimes(2);
-        expect(utils.execSudoWithOutput).toHaveBeenNthCalledWith(1, 'yum', 'install', '-y', 'pkg1');
-        expect(utils.execSudoWithOutput).toHaveBeenNthCalledWith(2, 'dnf', 'install', '-y', 'pkg1');
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledTimes(2);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(1, 'yum', [
+            '--enablerepo=*-debuginfo',
+            'install',
+            '-y',
+            'pkg1'
+        ]);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(2, 'dnf', [
+            '--enablerepo=*-debuginfo',
+            'install',
+            '-y',
+            'pkg1'
+        ]);
     });
 });
 
@@ -608,22 +783,21 @@ describe('visitZypper', () => {
     it('when no packages then skips installation', async () => {
         const installer = new PackagesInstaller();
         await installer.visitZypper(new Zypper());
-        expect(utils.execSudoWithOutput).not.toHaveBeenCalled();
+        expect(utils.execPrivilegedWithOutput).not.toHaveBeenCalled();
     });
 
     it('when there are packages then installs them', async () => {
-        (utils.execSudoWithOutput as jest.Mock).mockResolvedValue('');
+        (utils.execPrivilegedWithOutput as jest.Mock).mockResolvedValue('');
 
         const installer = new PackagesInstaller('glibc-debuginfo');
         await installer.visitZypper(new Zypper());
 
-        expect(utils.execSudoWithOutput).toHaveBeenCalledWith(
-            'zypper',
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('zypper', [
             '--non-interactive',
             '--plus-content',
             'debug',
             'install',
             'glibc-debuginfo'
-        );
+        ]);
     });
 });

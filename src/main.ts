@@ -2,17 +2,14 @@ import * as core from '@actions/core';
 import * as exec from '@actions/exec';
 import * as io from '@actions/io';
 import { installRunner, installValgrind } from './install';
-import { getCargoBin, bail, printInfo } from './utils';
+import { getCargoBin, bail, printInfo, isDebug } from './utils';
 import { Inputs, parseInputs } from './inputs';
+import { detectPlatform } from './detect';
 
 /** Main entry point: validates environment, detects versions, and installs gungraun-runner and valgrind. */
 async function run(): Promise<void> {
     if (process.platform !== 'linux') {
-        bail('This action only supports Linux runners');
-    }
-
-    if (!(await io.which(getCargoBin(), false))) {
-        bail('cargo is not installed. This action requires Rust/Cargo.');
+        bail('This action currently only supports Linux runners');
     }
 
     let inputs: Inputs;
@@ -22,12 +19,20 @@ async function run(): Promise<void> {
         bail(`Error parsing inputs: ${(error as Error).message}`);
     }
 
+    if (!inputs.runnerStrategies.includes('none') && !(await io.which(getCargoBin(), false))) {
+        bail(
+            'cargo is not installed. This action requires Rust/Cargo to be able to install gungraun-runner.'
+        );
+    }
+
     const {
         githubToken,
         installBuildDeps,
         runnerStrategies,
         runnerVersion,
         runnerTarget,
+        valgrindConfigureArgs,
+        valgrindMakeEnvs,
         valgrindStrategies,
         valgrindUrl,
         valgrindShaUrl,
@@ -38,7 +43,7 @@ async function run(): Promise<void> {
     if (valgrindPath) {
         try {
             const { stdout } = await exec.getExecOutput('valgrind', ['--version'], {
-                silent: true,
+                silent: !isDebug(),
                 ignoreReturnCode: true
             });
             printInfo(`Valgrind already installed: ${stdout.trim()} (${valgrindPath})`);
@@ -53,10 +58,17 @@ async function run(): Promise<void> {
                 installBuildDeps,
                 githubToken,
                 valgrindUrl,
-                valgrindShaUrl
+                valgrindShaUrl,
+                valgrindConfigureArgs,
+                valgrindMakeEnvs
             );
+
+            const { id, relatedIds } = await detectPlatform();
+            if (relatedIds.length === 0 ? id === 'arch' : relatedIds.includes('arch')) {
+                core.exportVariable('DEBUGINFOD_URLS', 'https://debuginfod.archlinux.org');
+            }
         } catch (error) {
-            bail(`Error installing valgrind: ${(error as Error).message}`);
+            bail(`Error installing Valgrind: ${(error as Error).message}`);
         }
     }
 

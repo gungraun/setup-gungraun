@@ -1,6 +1,8 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 
-set -euo pipefail
+set -e
+
+if [ -n "${GUNGRAUN_ACTION_DEBUG}" ]; then set -x; fi
 
 . /etc/os-release
 
@@ -38,41 +40,48 @@ detect_package_manager() {
 }
 
 pkg_manager=$(detect_package_manager)
+sudo=$(command -v sudo || true)
 
 case "$pkg_manager" in
 apt)
-    sudo apt-get update -qq >/dev/null 2>&1 || true
-    apt-cache policy valgrind 2>/dev/null |
+    $sudo apt-get update -y 2>/dev/null >&2
+    apt-cache policy valgrind |
         awk '/\s*Candidate:/ { match($0, /[0-9]+\.[0-9]+\.[0-9]+/); print substr($0, RSTART, RLENGTH) }' |
-        sort -V | tail -1
+        sort -V |
+        tail -1
     ;;
 dnf)
-    sudo dnf list --showduplicates valgrind 2>/dev/null |
+    ($sudo dnf list --showduplicates valgrind 2>/dev/null || $sudo microdnf repoquery valgrind) |
         awk '/^valgrind/ { match($0, /[0-9]+\.[0-9]+\.[0-9]+/); print substr($0, RSTART, RLENGTH) }' |
-        sort -V | tail -1
+        sort -V |
+        tail -1
     ;;
 yum)
-    (sudo yum list --showduplicates valgrind 2>/dev/null || sudo dnf list --showduplicates valgrind 2>/dev/null) |
+    ($sudo yum list --showduplicates valgrind 2>/dev/null || $sudo dnf list --showduplicates valgrind 2>/dev/null || $sudo microdnf repoquery valgrind) |
         awk '/^valgrind/ { match($0, /[0-9]+\.[0-9]+\.[0-9]+/); print substr($0, RSTART, RLENGTH) }' |
-        sort -V | tail -1
+        sort -V |
+        tail -1
     ;;
 zypper)
-    sudo zypper --non-interactive --quiet refresh >/dev/null 2>&1 || true
-    sudo zypper --non-interactive info valgrind 2>/dev/null |
+    $sudo zypper --non-interactive refresh 2>/dev/null >&2
+    $sudo zypper --non-interactive info valgrind |
         awk '/^Version/ { match($0, /[0-9]+\.[0-9]+\.[0-9]+/); print substr($0, RSTART, RLENGTH) }' |
-        sort -V | tail -1
+        sort -V |
+        tail -1
     ;;
 pacman)
-    sudo pacman -Sy >/dev/null 2>&1 || true
-    sudo pacman -Si valgrind 2>/dev/null |
+    $sudo pacman -Sy 2>/dev/null >&2
+    pacman -Si valgrind |
         awk '/^Version/ { match($0, /[0-9]+\.[0-9]+\.[0-9]+/); print substr($0, RSTART, RLENGTH) }' |
-        sort -V | tail -1
+        sort -V |
+        tail -1
     ;;
 apk)
-    sudo apk update >/dev/null 2>&1 || true
-    sudo apk policy valgrind 2>/dev/null |
+    $sudo apk update 2>/dev/null >&2
+    apk policy valgrind |
         awk '/^[[:space:]]+[0-9]/ { match($0, /[0-9]+\.[0-9]+\.[0-9]+/); print substr($0, RSTART, RLENGTH) }' |
-        sort -V | tail -1
+        sort -V |
+        tail -1
     ;;
 *)
     echo "error: unknown package manager '$pkg_manager'" >&2

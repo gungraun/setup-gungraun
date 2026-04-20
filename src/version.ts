@@ -23,7 +23,7 @@ export class Version {
             return new Version(Number(match[1]), Number(match[2]), Number(match[3]));
         }
 
-        throw new Error(`Invalid valgrind version tag: ${tag}`);
+        throw new Error(`Invalid Valgrind version tag: ${tag}`);
     }
 
     static fromString(str: string): Version {
