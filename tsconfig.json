@@ -8,9 +8,9 @@
         "esModuleInterop": true,
         "forceConsistentCasingInFileNames": true,
         "isolatedModules": true,
-        "lib": ["ES2022"],
-        "module": "commonjs",
-        "moduleResolution": "node",
+        "lib": ["ES2025"],
+        "module": "nodenext",
+        "moduleResolution": "nodenext",
         "newLine": "lf",
         "noImplicitAny": true,
         "noImplicitReturns": true,
@@ -20,7 +20,7 @@
         "outDir": "./dist",
         "pretty": true,
         "resolveJsonModule": true,
-        "rootDir": "./src",
+        "rootDir": ".",
         "skipLibCheck": true,
         "sourceMap": true,
         "strict": true,
@@ -28,8 +28,9 @@
         "strictFunctionTypes": true,
         "strictNullChecks": true,
         "strictPropertyInitialization": true,
-        "target": "ES2022"
+        "target": "ES2022",
+        "types": ["jest", "node"]
     },
-    "include": ["src/**/*.ts"],
+    "include": ["src/**/*.ts", "__tests__/**/*.ts"],
     "exclude": ["coverage", "dist", "node_modules"]
 }

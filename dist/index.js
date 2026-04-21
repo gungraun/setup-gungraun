@@ -34348,7 +34348,7 @@ async function resolveValgrindBuilderAssetName(version, arch, platform, githubTo
     const release = await fetchReleaseAssetData(utils_1.VALGRIND_BUILDER_REPO, version_1.Version.latest(), githubToken);
     // Example: valgrind-3.19.0-x86_64-ubuntu-22.04.tar.gz
     if (version.isAutoOrLatest()) {
-        const pattern = new RegExp(String.raw `^valgrind-(\d+)\.(\d+)\.(\d+)-${(0, utils_1.escapeRegex)(arch)}-${(0, utils_1.escapeRegex)(platform)}\.tar\.gz$`);
+        const pattern = new RegExp(String.raw `^valgrind-(\d+)\.(\d+)\.(\d+)-${RegExp.escape(arch)}-${RegExp.escape(platform)}\.tar\.gz$`);
         const sorted = release.assets
             .map((a) => a.name.match(pattern))
             .filter((match) => match != null)
@@ -34439,7 +34439,6 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.VALGRIND_SOURCE_REPO = exports.VALGRIND_BUILDER_REPO = exports.GUNGRAUN_REPO = void 0;
 exports.isDebug = isDebug;
 exports.bail = bail;
-exports.escapeRegex = escapeRegex;
 exports.isRoot = isRoot;
 exports.execPrivileged = execPrivileged;
 exports.execPrivilegedWithOutput = execPrivilegedWithOutput;
@@ -34470,10 +34469,6 @@ function isDebug() {
 function bail(message) {
     core.setFailed(message);
     process.exit(1);
-}
-/** Escapes special regex characters in a string. */
-function escapeRegex(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 function isRoot() {
     return process.getuid?.() === 0;

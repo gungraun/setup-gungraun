@@ -163,8 +163,8 @@ describe('downloadAndExtractValgrindUrl', () => {
         (verifySha as jest.Mock).mockResolvedValue(undefined);
 
         const result = await downloadAndExtractValgrindUrl(
-            'https://example.com/valgrind.tar.gz',
-            'https://example.com/valgrind.tar.gz.sha256'
+            new URL('https://example.com/valgrind.tar.gz'),
+            new URL('https://example.com/valgrind.tar.gz.sha256')
         );
 
         expect(result).toEqual({ extractDir: '/tmp/extracted', name: 'valgrind.tar.gz' });
@@ -182,8 +182,7 @@ describe('downloadAndExtractValgrindUrl', () => {
         (tc.extractTar as jest.Mock).mockResolvedValue('/tmp/extracted');
 
         const result = await downloadAndExtractValgrindUrl(
-            'https://example.com/valgrind.tar.gz',
-            ''
+            new URL('https://example.com/valgrind.tar.gz')
         );
 
         expect(result).toEqual({

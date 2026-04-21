@@ -32,19 +32,6 @@ describe('bail', () => {
     });
 });
 
-describe('escapeRegex', () => {
-    it('with all special chars', () => {
-        expect(utils.escapeRegex('.*+?^${}()|[]\\]')).toEqual(
-            '\\.\\*\\+\\?\\^\\$\\{\\}\\(\\)\\|\\[\\]\\\\\\]'
-        );
-    });
-
-    it('returns plain strings unchanged', () => {
-        expect(utils.escapeRegex('hello')).toBe('hello');
-        expect(utils.escapeRegex('ubuntu2204')).toBe('ubuntu2204');
-    });
-});
-
 describe('isRoot', () => {
     it('when uid is 0 then returns true', () => {
         jest.spyOn(process, 'getuid').mockReturnValue(0);

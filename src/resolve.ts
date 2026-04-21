@@ -1,7 +1,6 @@
 import * as exec from '@actions/exec';
 import { getOctokit } from '@actions/github';
 import {
-    escapeRegex,
     GUNGRAUN_REPO,
     isDebug,
     retry,
@@ -149,7 +148,7 @@ export async function resolveValgrindBuilderAssetName(
     // Example: valgrind-3.19.0-x86_64-ubuntu-22.04.tar.gz
     if (version.isAutoOrLatest()) {
         const pattern = new RegExp(
-            String.raw`^valgrind-(\d+)\.(\d+)\.(\d+)-${escapeRegex(arch)}-${escapeRegex(platform)}\.tar\.gz$`
+            String.raw`^valgrind-(\d+)\.(\d+)\.(\d+)-${RegExp.escape(arch)}-${RegExp.escape(platform)}\.tar\.gz$`
         );
 
         const sorted = release.assets

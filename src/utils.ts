@@ -21,11 +21,6 @@ export function bail(message: string): never {
     process.exit(1);
 }
 
-/** Escapes special regex characters in a string. */
-export function escapeRegex(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 export function isRoot(): boolean {
     return process.getuid?.() === 0;
 }
