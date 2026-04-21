@@ -17,6 +17,18 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [1.0.1] - 2025-04-21
+
+### Changed
+
+- Upgrade @actions/core to v2, @actions/exec to v2, @actions/github to v8,
+  @actions/io to v2, @actions/tool-cache to v3
+
+### Fixed
+
+- Fix a dependency vulnerability undici <=6.23.0 with severity: high by updating
+  @actions/github to v8
+
 ## [1.0.0] - 2025-04-21
 
 ### Added
