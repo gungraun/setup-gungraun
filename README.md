@@ -154,10 +154,10 @@ action sets the environment variable
 ### Install a specific runner version
 
 ```yaml
-- name: Setup gungraun-runner 0.1.0 and Valgrind
+- name: Setup gungraun-runner 0.18.0 and Valgrind
   uses: gungraun/setup-gungraun@v1
   with:
-      runner-version: 0.1.0
+      runner-version: 0.18.0
 ```
 
 ### Skip Valgrind installation
