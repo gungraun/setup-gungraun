@@ -61,7 +61,7 @@ export async function fetchRunnerVersions(githubToken: string): Promise<Resolved
             owner,
             repo: repoName
         });
-        return data.map((d) => ResolvedVersion.fromString(d.tag_name));
+        return data.map((d: { tag_name: string }) => ResolvedVersion.fromString(d.tag_name));
     } catch (error) {
         throw new Error(`Failed to fetch gungraun-runner versions: ${(error as Error).message}`);
     }
