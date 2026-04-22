@@ -12,7 +12,11 @@ export const VALGRIND_BUILDER_REPO = 'gungraun/valgrind-builder';
 export const VALGRIND_SOURCE_REPO = 'https://sourceware.org/git/valgrind.git';
 
 export function isDebug(): boolean {
-    return !!process.env.GUNGRAUN_ACTION_DEBUG;
+    return (
+        !!process.env.GUNGRAUN_ACTION_DEBUG ||
+        process.env.ACTIONS_STEP_DEBUG === 'true' ||
+        process.env.RUNNER_DEBUG === '1'
+    );
 }
 
 /** Marks the action as failed and exits the process. Never returns. */
@@ -48,9 +52,9 @@ export async function execPrivileged(
 export async function execPrivilegedWithOutput(
     cmd: string,
     args: string[],
-    opts?: { env?: Record<string, string> }
+    opts?: { env?: Record<string, string>; silent?: boolean }
 ): Promise<string> {
-    const execOpts: exec.ExecOptions = { silent: !isDebug() };
+    const execOpts: exec.ExecOptions = { silent: opts?.silent ?? !isDebug() };
 
     if (opts?.env) {
         execOpts.env = { ...(process.env as Record<string, string>), ...opts.env };
@@ -110,6 +114,13 @@ export function printInfo(message: string): void {
 /** Logs a warning message. */
 export function printWarning(message: string): void {
     core.warning(message);
+}
+
+/** Logs a debug message if debugging is enabled */
+export function printDebug(message: string): void {
+    if (isDebug()) {
+        console.log(message);
+    }
 }
 
 export function randNumber(min: number = 0, max: number) {

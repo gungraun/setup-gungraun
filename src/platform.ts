@@ -291,7 +291,7 @@ export class PackagesInstaller implements PackageManagerVisitor<Promise<void>> {
             await execPrivilegedWithOutput(
                 'apt-get',
                 ['install', '-y', '--no-install-recommends', ...this.pkgs],
-                { env: { DEBIAN_FRONTEND: 'noninteractive' } }
+                { env: { DEBIAN_FRONTEND: 'noninteractive' }, silent: false }
             );
         }
     }
@@ -299,19 +299,18 @@ export class PackagesInstaller implements PackageManagerVisitor<Promise<void>> {
     async visitApk(pm: Apk): Promise<void> {
         if (this.hasPackages()) {
             await pm.updateCache();
-            await execPrivilegedWithOutput('apk', ['add', ...this.pkgs]);
+            await execPrivilegedWithOutput('apk', ['add', ...this.pkgs], { silent: false });
         }
     }
 
     async visitDnf(_pm: Dnf): Promise<void> {
         if (this.hasPackages()) {
             try {
-                await execPrivilegedWithOutput('dnf', [
-                    '--enablerepo=*-debuginfo',
-                    'install',
-                    '-y',
-                    ...this.pkgs
-                ]);
+                await execPrivilegedWithOutput(
+                    'dnf',
+                    ['--enablerepo=*-debuginfo', 'install', '-y', ...this.pkgs],
+                    { silent: false }
+                );
             } catch {
                 return new MicroDnf().accept(new PackagesInstaller(...this.pkgs));
             }
@@ -320,31 +319,31 @@ export class PackagesInstaller implements PackageManagerVisitor<Promise<void>> {
 
     async visitMicroDnf(_pm: MicroDnf): Promise<void> {
         if (this.hasPackages()) {
-            await execPrivilegedWithOutput('microdnf', [
-                '--enablerepo=*-debuginfo',
-                'install',
-                '-y',
-                ...this.pkgs
-            ]);
+            await execPrivilegedWithOutput(
+                'microdnf',
+                ['--enablerepo=*-debuginfo', 'install', '-y', ...this.pkgs],
+                { silent: false }
+            );
         }
     }
 
     async visitPacman(pm: Pacman): Promise<void> {
         if (this.hasPackages()) {
             await pm.updateCache();
-            await execPrivilegedWithOutput('pacman', ['-S', '--noconfirm', ...this.pkgs]);
+            await execPrivilegedWithOutput('pacman', ['-S', '--noconfirm', ...this.pkgs], {
+                silent: false
+            });
         }
     }
 
     async visitYum(_pm: Yum): Promise<void> {
         if (this.hasPackages()) {
             try {
-                await execPrivilegedWithOutput('yum', [
-                    '--enablerepo=*-debuginfo',
-                    'install',
-                    '-y',
-                    ...this.pkgs
-                ]);
+                await execPrivilegedWithOutput(
+                    'yum',
+                    ['--enablerepo=*-debuginfo', 'install', '-y', ...this.pkgs],
+                    { silent: false }
+                );
             } catch {
                 return new Dnf().accept(new PackagesInstaller(...this.pkgs));
             }
@@ -353,13 +352,17 @@ export class PackagesInstaller implements PackageManagerVisitor<Promise<void>> {
 
     async visitZypper(_pm: Zypper): Promise<void> {
         if (this.hasPackages()) {
-            await execPrivilegedWithOutput('zypper', [
-                '--non-interactive',
-                '--plus-content',
-                'debug',
-                'install',
-                ...this.pkgs
-            ] as string[]);
+            await execPrivilegedWithOutput(
+                'zypper',
+                [
+                    '--non-interactive',
+                    '--plus-content',
+                    'debug',
+                    'install',
+                    ...this.pkgs
+                ] as string[],
+                { silent: false }
+            );
         }
     }
 }

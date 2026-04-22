@@ -2,9 +2,9 @@ import * as core from '@actions/core';
 import * as exec from '@actions/exec';
 import * as io from '@actions/io';
 import { installRunner, installValgrind } from './install';
-import { getCargoBin, bail, printInfo, isDebug } from './utils';
+import { getCargoBin, bail, printInfo, isDebug, printDebug } from './utils';
 import { Inputs, parseInputs } from './inputs';
-import { detectPlatform } from './detect';
+import * as fs from 'fs';
 
 /** Main entry point: validates environment, detects versions, and installs gungraun-runner and valgrind. */
 async function run(): Promise<void> {
@@ -63,9 +63,28 @@ async function run(): Promise<void> {
                 valgrindMakeEnvs
             );
 
-            const { id, relatedIds } = await detectPlatform();
-            if (relatedIds.length === 0 ? id === 'arch' : relatedIds.includes('arch')) {
-                core.exportVariable('DEBUGINFOD_URLS', 'https://debuginfod.archlinux.org');
+            try {
+                const urls = fs
+                    .readdirSync('/etc/debuginfod')
+                    .map((file) => {
+                        if (file.endsWith('.urls')) {
+                            return fs
+                                .readFileSync(`/etc/debuginfod/${file}`, 'utf8')
+                                .replaceAll('\n', ' ')
+                                .trim();
+                        } else {
+                            return '';
+                        }
+                    })
+                    .filter((url) => url.length > 0)
+                    .join(' ');
+
+                if (urls) {
+                    printInfo(`Setting DEBUGINFOD_URLS to '${urls}'`);
+                    core.exportVariable('DEBUGINFOD_URLS', urls);
+                }
+            } catch {
+                printDebug(`debuginfod urls don't exist or are not readable`);
             }
         } catch (error) {
             bail(`Error installing Valgrind: ${(error as Error).message}`);

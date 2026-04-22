@@ -35516,7 +35516,7 @@ const io = __importStar(__nccwpck_require__(4994));
 const install_1 = __nccwpck_require__(232);
 const utils_1 = __nccwpck_require__(1798);
 const inputs_1 = __nccwpck_require__(8422);
-const detect_1 = __nccwpck_require__(1052);
+const fs = __importStar(__nccwpck_require__(9896));
 /** Main entry point: validates environment, detects versions, and installs gungraun-runner and valgrind. */
 async function run() {
     if (process.platform !== 'linux') {
@@ -35549,9 +35549,29 @@ async function run() {
     else {
         try {
             await (0, install_1.installValgrind)(valgrindVersion, valgrindStrategies, installBuildDeps, githubToken, valgrindUrl, valgrindShaUrl, valgrindConfigureArgs, valgrindMakeEnvs);
-            const { id, relatedIds } = await (0, detect_1.detectPlatform)();
-            if (relatedIds.length === 0 ? id === 'arch' : relatedIds.includes('arch')) {
-                core.exportVariable('DEBUGINFOD_URLS', 'https://debuginfod.archlinux.org');
+            try {
+                const urls = fs
+                    .readdirSync('/etc/debuginfod')
+                    .map((file) => {
+                    if (file.endsWith('.urls')) {
+                        return fs
+                            .readFileSync(`/etc/debuginfod/${file}`, 'utf8')
+                            .replaceAll('\n', ' ')
+                            .trim();
+                    }
+                    else {
+                        return '';
+                    }
+                })
+                    .filter((url) => url.length > 0)
+                    .join(' ');
+                if (urls) {
+                    (0, utils_1.printInfo)(`Setting DEBUGINFOD_URLS to '${urls}'`);
+                    core.exportVariable('DEBUGINFOD_URLS', urls);
+                }
+            }
+            catch {
+                (0, utils_1.printDebug)(`debuginfod urls don't exist or are not readable`);
             }
         }
         catch (error) {
@@ -35806,24 +35826,19 @@ class PackagesInstaller {
     async visitAptGet(pm) {
         if (this.hasPackages()) {
             await pm.updateCache();
-            await (0, utils_1.execPrivilegedWithOutput)('apt-get', ['install', '-y', '--no-install-recommends', ...this.pkgs], { env: { DEBIAN_FRONTEND: 'noninteractive' } });
+            await (0, utils_1.execPrivilegedWithOutput)('apt-get', ['install', '-y', '--no-install-recommends', ...this.pkgs], { env: { DEBIAN_FRONTEND: 'noninteractive' }, silent: false });
         }
     }
     async visitApk(pm) {
         if (this.hasPackages()) {
             await pm.updateCache();
-            await (0, utils_1.execPrivilegedWithOutput)('apk', ['add', ...this.pkgs]);
+            await (0, utils_1.execPrivilegedWithOutput)('apk', ['add', ...this.pkgs], { silent: false });
         }
     }
     async visitDnf(_pm) {
         if (this.hasPackages()) {
             try {
-                await (0, utils_1.execPrivilegedWithOutput)('dnf', [
-                    '--enablerepo=*-debuginfo',
-                    'install',
-                    '-y',
-                    ...this.pkgs
-                ]);
+                await (0, utils_1.execPrivilegedWithOutput)('dnf', ['--enablerepo=*-debuginfo', 'install', '-y', ...this.pkgs], { silent: false });
             }
             catch {
                 return new MicroDnf().accept(new PackagesInstaller(...this.pkgs));
@@ -35832,29 +35847,21 @@ class PackagesInstaller {
     }
     async visitMicroDnf(_pm) {
         if (this.hasPackages()) {
-            await (0, utils_1.execPrivilegedWithOutput)('microdnf', [
-                '--enablerepo=*-debuginfo',
-                'install',
-                '-y',
-                ...this.pkgs
-            ]);
+            await (0, utils_1.execPrivilegedWithOutput)('microdnf', ['--enablerepo=*-debuginfo', 'install', '-y', ...this.pkgs], { silent: false });
         }
     }
     async visitPacman(pm) {
         if (this.hasPackages()) {
             await pm.updateCache();
-            await (0, utils_1.execPrivilegedWithOutput)('pacman', ['-S', '--noconfirm', ...this.pkgs]);
+            await (0, utils_1.execPrivilegedWithOutput)('pacman', ['-S', '--noconfirm', ...this.pkgs], {
+                silent: false
+            });
         }
     }
     async visitYum(_pm) {
         if (this.hasPackages()) {
             try {
-                await (0, utils_1.execPrivilegedWithOutput)('yum', [
-                    '--enablerepo=*-debuginfo',
-                    'install',
-                    '-y',
-                    ...this.pkgs
-                ]);
+                await (0, utils_1.execPrivilegedWithOutput)('yum', ['--enablerepo=*-debuginfo', 'install', '-y', ...this.pkgs], { silent: false });
             }
             catch {
                 return new Dnf().accept(new PackagesInstaller(...this.pkgs));
@@ -35869,7 +35876,7 @@ class PackagesInstaller {
                 'debug',
                 'install',
                 ...this.pkgs
-            ]);
+            ], { silent: false });
         }
     }
 }
@@ -36116,6 +36123,7 @@ exports.normalizePath = normalizePath;
 exports.printError = printError;
 exports.printInfo = printInfo;
 exports.printWarning = printWarning;
+exports.printDebug = printDebug;
 exports.randNumber = randNumber;
 exports.retry = retry;
 exports.splitOnce = splitOnce;
@@ -36130,7 +36138,9 @@ exports.GUNGRAUN_REPO = 'gungraun/gungraun';
 exports.VALGRIND_BUILDER_REPO = 'gungraun/valgrind-builder';
 exports.VALGRIND_SOURCE_REPO = 'https://sourceware.org/git/valgrind.git';
 function isDebug() {
-    return !!process.env.GUNGRAUN_ACTION_DEBUG;
+    return (!!process.env.GUNGRAUN_ACTION_DEBUG ||
+        process.env.ACTIONS_STEP_DEBUG === 'true' ||
+        process.env.RUNNER_DEBUG === '1');
 }
 /** Marks the action as failed and exits the process. Never returns. */
 function bail(message) {
@@ -36156,7 +36166,7 @@ async function execPrivileged(cmd, args, opts) {
     }
 }
 async function execPrivilegedWithOutput(cmd, args, opts) {
-    const execOpts = { silent: !isDebug() };
+    const execOpts = { silent: opts?.silent ?? !isDebug() };
     if (opts?.env) {
         execOpts.env = { ...process.env, ...opts.env };
     }
@@ -36209,6 +36219,12 @@ function printInfo(message) {
 /** Logs a warning message. */
 function printWarning(message) {
     core.warning(message);
+}
+/** Logs a debug message if debugging is enabled */
+function printDebug(message) {
+    if (isDebug()) {
+        console.log(message);
+    }
 }
 function randNumber(min = 0, max) {
     return Math.floor(Math.random() * (max - min)) + min;

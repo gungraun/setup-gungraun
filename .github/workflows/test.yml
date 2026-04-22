@@ -13,6 +13,10 @@ concurrency:
   group: ${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  pull-requests: read
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
@@ -272,6 +276,8 @@ jobs:
             apk add git
             ;;
           archlinux*)
+            # source: https://hub.docker.com/_/archlinux
+            pacman-key --init
             pacman -Sy --noconfirm git
             ;;
           *) ;;
@@ -306,7 +312,7 @@ jobs:
         #   GUNGRAUN_ACTION_DEBUG: yes
 
       - name: Verify valgrind
-        shell: sh
+        shell: sh -ex {0}
         run: |
           expected_version="${{ steps.get_valgrind_version.outputs.expected_version }}"
 
@@ -323,9 +329,18 @@ jobs:
             else
               echo "Successfully installed valgrind: $actual_version"
 
-              set -x
               # To verify the default gungraun tool is running
               valgrind --tool=callgrind ls -la
+
+              if [ -n "DEBUGINFOD_URLS" ]; then
+                # After a glibc update in the archlinux:latest image the debug
+                # symbols might not available yet on the debuginfod server
+                if ! debuginfod-find -v debuginfo /usr/lib/ld-linux-x86-64.so.2; then
+                  echo "Skipping the valgrind memcheck tool test since debug symbols are not available yet"
+                  exit 0
+                fi
+              fi
+
               # To verify the debug symbol installation for libc is working
               valgrind --tool=memcheck ls -la
 

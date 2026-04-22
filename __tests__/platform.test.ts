@@ -614,7 +614,7 @@ describe('PackagesInstaller visitAptGet', () => {
         expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith(
             'apt-get',
             ['install', '-y', '--no-install-recommends', 'pkg1', 'pkg2'],
-            { env: { DEBIAN_FRONTEND: 'noninteractive' } }
+            { env: { DEBIAN_FRONTEND: 'noninteractive' }, silent: false }
         );
     });
 });
@@ -636,7 +636,9 @@ describe('PackagesInstaller visitApk', () => {
         await installer.visitApk(mockApk);
 
         expect(mockApk.updateCache).toHaveBeenCalled();
-        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('apk', ['add', 'musl-dbg']);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('apk', ['add', 'musl-dbg'], {
+            silent: false
+        });
     });
 });
 
@@ -653,12 +655,11 @@ describe('PackagesInstaller visitDnf', () => {
         const installer = new PackagesInstaller('glibc-debuginfo');
         await installer.visitDnf(new Dnf());
 
-        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('dnf', [
-            '--enablerepo=*-debuginfo',
-            'install',
-            '-y',
-            'glibc-debuginfo'
-        ]);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith(
+            'dnf',
+            ['--enablerepo=*-debuginfo', 'install', '-y', 'glibc-debuginfo'],
+            { silent: false }
+        );
     });
 
     it('when dnf install fails then falls back to microdnf', async () => {
@@ -670,18 +671,18 @@ describe('PackagesInstaller visitDnf', () => {
         await installer.visitDnf(new Dnf());
 
         expect(utils.execPrivilegedWithOutput).toHaveBeenCalledTimes(2);
-        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(1, 'dnf', [
-            '--enablerepo=*-debuginfo',
-            'install',
-            '-y',
-            'pkg1'
-        ]);
-        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(2, 'microdnf', [
-            '--enablerepo=*-debuginfo',
-            'install',
-            '-y',
-            'pkg1'
-        ]);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(
+            1,
+            'dnf',
+            ['--enablerepo=*-debuginfo', 'install', '-y', 'pkg1'],
+            { silent: false }
+        );
+        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(
+            2,
+            'microdnf',
+            ['--enablerepo=*-debuginfo', 'install', '-y', 'pkg1'],
+            { silent: false }
+        );
     });
 });
 
@@ -698,12 +699,11 @@ describe('PackagesInstaller visitMicroDnf', () => {
         const installer = new PackagesInstaller('glibc-debuginfo');
         await installer.visitMicroDnf(new MicroDnf());
 
-        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('microdnf', [
-            '--enablerepo=*-debuginfo',
-            'install',
-            '-y',
-            'glibc-debuginfo'
-        ]);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith(
+            'microdnf',
+            ['--enablerepo=*-debuginfo', 'install', '-y', 'glibc-debuginfo'],
+            { silent: false }
+        );
     });
 });
 
@@ -726,11 +726,11 @@ describe('PackagesInstaller visitPacman', () => {
         await installer.visitPacman(mockPacman);
 
         expect(mockPacman.updateCache).toHaveBeenCalled();
-        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('pacman', [
-            '-S',
-            '--noconfirm',
-            'debuginfod'
-        ]);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith(
+            'pacman',
+            ['-S', '--noconfirm', 'debuginfod'],
+            { silent: false }
+        );
     });
 });
 
@@ -747,12 +747,11 @@ describe('PackagesInstaller visitYum', () => {
         const installer = new PackagesInstaller('pkg1');
         await installer.visitYum(new Yum());
 
-        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('yum', [
-            '--enablerepo=*-debuginfo',
-            'install',
-            '-y',
-            'pkg1'
-        ]);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith(
+            'yum',
+            ['--enablerepo=*-debuginfo', 'install', '-y', 'pkg1'],
+            { silent: false }
+        );
     });
 
     it('when yum fails then falls back to dnf', async () => {
@@ -764,18 +763,18 @@ describe('PackagesInstaller visitYum', () => {
         await installer.visitYum(new Yum());
 
         expect(utils.execPrivilegedWithOutput).toHaveBeenCalledTimes(2);
-        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(1, 'yum', [
-            '--enablerepo=*-debuginfo',
-            'install',
-            '-y',
-            'pkg1'
-        ]);
-        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(2, 'dnf', [
-            '--enablerepo=*-debuginfo',
-            'install',
-            '-y',
-            'pkg1'
-        ]);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(
+            1,
+            'yum',
+            ['--enablerepo=*-debuginfo', 'install', '-y', 'pkg1'],
+            { silent: false }
+        );
+        expect(utils.execPrivilegedWithOutput).toHaveBeenNthCalledWith(
+            2,
+            'dnf',
+            ['--enablerepo=*-debuginfo', 'install', '-y', 'pkg1'],
+            { silent: false }
+        );
     });
 });
 
@@ -792,12 +791,10 @@ describe('visitZypper', () => {
         const installer = new PackagesInstaller('glibc-debuginfo');
         await installer.visitZypper(new Zypper());
 
-        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith('zypper', [
-            '--non-interactive',
-            '--plus-content',
-            'debug',
-            'install',
-            'glibc-debuginfo'
-        ]);
+        expect(utils.execPrivilegedWithOutput).toHaveBeenCalledWith(
+            'zypper',
+            ['--non-interactive', '--plus-content', 'debug', 'install', 'glibc-debuginfo'],
+            { silent: false }
+        );
     });
 });
