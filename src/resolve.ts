@@ -23,45 +23,65 @@ interface ReleaseInfo {
 export async function fetchReleaseAssetData(
     repo: string,
     version: Version,
-    githubToken: string
+    githubToken: string,
+    retries?: number
 ): Promise<ReleaseInfo> {
     const octokit = getOctokit(githubToken);
     const [owner, repoName] = repo.split('/');
+    try {
+        return await retry(retries ?? 5, async () => {
+            let release: {
+                data: {
+                    tag_name: string;
+                    assets: { name: string; browser_download_url: string }[];
+                };
+            };
+            if (version.isLatest()) {
+                release = await octokit.rest.repos.getLatestRelease({
+                    owner,
+                    repo: repoName
+                });
+            } else {
+                release = await octokit.rest.repos.getReleaseByTag({
+                    owner,
+                    repo: repoName,
+                    tag: version.withPrefix()
+                });
+            }
 
-    let release: {
-        data: { tag_name: string; assets: { name: string; browser_download_url: string }[] };
-    };
-    if (version.isLatest()) {
-        release = await octokit.rest.repos.getLatestRelease({
-            owner,
-            repo: repoName
+            return {
+                tagName: release.data.tag_name,
+                assets: release.data.assets.map((a) => ({
+                    name: a.name,
+                    browserDownloadUrl: a.browser_download_url
+                }))
+            };
         });
-    } else {
-        release = await octokit.rest.repos.getReleaseByTag({
-            owner,
-            repo: repoName,
-            tag: version.withPrefix()
-        });
+    } catch (error) {
+        throw new Error(`Failed to fetch release assets: ${(error as Error).message}`);
     }
-
-    return {
-        tagName: release.data.tag_name,
-        assets: release.data.assets.map((a) => ({
-            name: a.name,
-            browserDownloadUrl: a.browser_download_url
-        }))
-    };
 }
 
-export async function fetchRunnerVersions(githubToken: string): Promise<ResolvedVersion[]> {
+export async function fetchRunnerVersions(
+    githubToken: string,
+    retries?: number
+): Promise<ResolvedVersion[]> {
+    const octokit = getOctokit(githubToken);
+    const [owner, repoName] = GUNGRAUN_REPO.split('/');
     try {
-        const octokit = getOctokit(githubToken);
-        const [owner, repoName] = GUNGRAUN_REPO.split('/');
-        const { data } = await octokit.rest.repos.listReleases({
-            owner,
-            repo: repoName
+        return await retry(retries ?? 5, async () => {
+            const { data } = await octokit.rest.repos.listReleases({
+                owner,
+                repo: repoName
+            });
+            if (data.length > 0) {
+                return data.map((d: { tag_name: string }) =>
+                    ResolvedVersion.fromString(d.tag_name)
+                );
+            } else {
+                throw new Error(`At least one version should be present`);
+            }
         });
-        return data.map((d: { tag_name: string }) => ResolvedVersion.fromString(d.tag_name));
     } catch (error) {
         throw new Error(`Failed to fetch gungraun-runner versions: ${(error as Error).message}`);
     }
@@ -96,17 +116,20 @@ export async function fetchSortedValgrindVersions(): Promise<ResolvedVersion[]> 
 async function resolveLatestTag(
     repo: string,
     notFoundMessage: string,
-    githubToken: string
+    githubToken: string,
+    retries?: number
 ): Promise<ResolvedVersion> {
+    const octokit = getOctokit(githubToken);
+    const [owner, repoName] = repo.split('/');
     let tag: string;
     try {
-        const octokit = getOctokit(githubToken);
-        const [owner, repoName] = repo.split('/');
-        const { data } = await octokit.rest.repos.getLatestRelease({
-            owner,
-            repo: repoName
+        tag = await retry(retries ?? 5, async () => {
+            const { data } = await octokit.rest.repos.getLatestRelease({
+                owner,
+                repo: repoName
+            });
+            return data.tag_name;
         });
-        tag = data.tag_name;
     } catch (error) {
         throw new Error(notFoundMessage + `: ${(error as Error).message}`);
     }
@@ -117,7 +140,8 @@ async function resolveLatestTag(
 /** Resolves a gungraun-runner version tag, fetching "latest" from GitHub if needed. */
 export async function resolveRunnerVersion(
     version: Version,
-    githubToken: string
+    githubToken: string,
+    retries?: number
 ): Promise<ResolvedVersion> {
     if (!version.isAutoOrLatest()) {
         return version;
@@ -126,7 +150,8 @@ export async function resolveRunnerVersion(
     return await resolveLatestTag(
         GUNGRAUN_REPO,
         'Could not determine latest release version for gungraun-runner',
-        githubToken
+        githubToken,
+        retries
     );
 }
 

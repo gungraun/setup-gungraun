@@ -35935,40 +35935,54 @@ const github_1 = __nccwpck_require__(3228);
 const utils_1 = __nccwpck_require__(1798);
 const version_1 = __nccwpck_require__(311);
 /** Fetches release assets for a given repo and tag from the GitHub API. */
-async function fetchReleaseAssetData(repo, version, githubToken) {
+async function fetchReleaseAssetData(repo, version, githubToken, retries) {
     const octokit = (0, github_1.getOctokit)(githubToken);
     const [owner, repoName] = repo.split('/');
-    let release;
-    if (version.isLatest()) {
-        release = await octokit.rest.repos.getLatestRelease({
-            owner,
-            repo: repoName
-        });
-    }
-    else {
-        release = await octokit.rest.repos.getReleaseByTag({
-            owner,
-            repo: repoName,
-            tag: version.withPrefix()
-        });
-    }
-    return {
-        tagName: release.data.tag_name,
-        assets: release.data.assets.map((a) => ({
-            name: a.name,
-            browserDownloadUrl: a.browser_download_url
-        }))
-    };
-}
-async function fetchRunnerVersions(githubToken) {
     try {
-        const octokit = (0, github_1.getOctokit)(githubToken);
-        const [owner, repoName] = utils_1.GUNGRAUN_REPO.split('/');
-        const { data } = await octokit.rest.repos.listReleases({
-            owner,
-            repo: repoName
+        return await (0, utils_1.retry)(retries ?? 5, async () => {
+            let release;
+            if (version.isLatest()) {
+                release = await octokit.rest.repos.getLatestRelease({
+                    owner,
+                    repo: repoName
+                });
+            }
+            else {
+                release = await octokit.rest.repos.getReleaseByTag({
+                    owner,
+                    repo: repoName,
+                    tag: version.withPrefix()
+                });
+            }
+            return {
+                tagName: release.data.tag_name,
+                assets: release.data.assets.map((a) => ({
+                    name: a.name,
+                    browserDownloadUrl: a.browser_download_url
+                }))
+            };
         });
-        return data.map((d) => version_1.ResolvedVersion.fromString(d.tag_name));
+    }
+    catch (error) {
+        throw new Error(`Failed to fetch release assets: ${error.message}`);
+    }
+}
+async function fetchRunnerVersions(githubToken, retries) {
+    const octokit = (0, github_1.getOctokit)(githubToken);
+    const [owner, repoName] = utils_1.GUNGRAUN_REPO.split('/');
+    try {
+        return await (0, utils_1.retry)(retries ?? 5, async () => {
+            const { data } = await octokit.rest.repos.listReleases({
+                owner,
+                repo: repoName
+            });
+            if (data.length > 0) {
+                return data.map((d) => version_1.ResolvedVersion.fromString(d.tag_name));
+            }
+            else {
+                throw new Error(`At least one version should be present`);
+            }
+        });
     }
     catch (error) {
         throw new Error(`Failed to fetch gungraun-runner versions: ${error.message}`);
@@ -35992,16 +36006,18 @@ async function fetchSortedValgrindVersions() {
     }
     return versions;
 }
-async function resolveLatestTag(repo, notFoundMessage, githubToken) {
+async function resolveLatestTag(repo, notFoundMessage, githubToken, retries) {
+    const octokit = (0, github_1.getOctokit)(githubToken);
+    const [owner, repoName] = repo.split('/');
     let tag;
     try {
-        const octokit = (0, github_1.getOctokit)(githubToken);
-        const [owner, repoName] = repo.split('/');
-        const { data } = await octokit.rest.repos.getLatestRelease({
-            owner,
-            repo: repoName
+        tag = await (0, utils_1.retry)(retries ?? 5, async () => {
+            const { data } = await octokit.rest.repos.getLatestRelease({
+                owner,
+                repo: repoName
+            });
+            return data.tag_name;
         });
-        tag = data.tag_name;
     }
     catch (error) {
         throw new Error(notFoundMessage + `: ${error.message}`);
@@ -36009,11 +36025,11 @@ async function resolveLatestTag(repo, notFoundMessage, githubToken) {
     return version_1.ResolvedVersion.fromString(tag);
 }
 /** Resolves a gungraun-runner version tag, fetching "latest" from GitHub if needed. */
-async function resolveRunnerVersion(version, githubToken) {
+async function resolveRunnerVersion(version, githubToken, retries) {
     if (!version.isAutoOrLatest()) {
         return version;
     }
-    return await resolveLatestTag(utils_1.GUNGRAUN_REPO, 'Could not determine latest release version for gungraun-runner', githubToken);
+    return await resolveLatestTag(utils_1.GUNGRAUN_REPO, 'Could not determine latest release version for gungraun-runner', githubToken, retries);
 }
 /** Resolves the valgrind asset name matching the given architecture and platform. */
 async function resolveValgrindBuilderAssetName(version, arch, platform, githubToken) {

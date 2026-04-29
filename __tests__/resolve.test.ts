@@ -109,6 +109,16 @@ describe('fetchReleaseAssetData', () => {
             tag: 'v2.5.1'
         });
     });
+
+    it('when API error then throws with descriptive message', async () => {
+        mockOctokit({
+            getLatestRelease: jest.fn().mockRejectedValue(new Error('not found'))
+        });
+
+        await expect(
+            fetchReleaseAssetData('owner/repo', Version.latest(), 'token', 0)
+        ).rejects.toThrow('Failed to fetch release assets: not found');
+    });
 });
 
 describe('fetchRunnerVersions', () => {
@@ -129,8 +139,18 @@ describe('fetchRunnerVersions', () => {
             listReleases: jest.fn().mockRejectedValue(new Error('API rate limit'))
         });
 
-        await expect(fetchRunnerVersions('token')).rejects.toThrow(
+        await expect(fetchRunnerVersions('token', 0)).rejects.toThrow(
             'Failed to fetch gungraun-runner versions: API rate limit'
+        );
+    });
+
+    it('when no releases then throws with descriptive message', async () => {
+        mockOctokit({
+            listReleases: jest.fn().mockResolvedValue({ data: [] })
+        });
+
+        await expect(fetchRunnerVersions('token', 0)).rejects.toThrow(
+            'Failed to fetch gungraun-runner versions: At least one version should be present'
         );
     });
 });
@@ -246,7 +266,7 @@ describe('resolveRunnerVersion', () => {
             getLatestRelease: jest.fn().mockRejectedValue(new Error('not found'))
         });
 
-        await expect(resolveRunnerVersion(Version.latest(), 'token')).rejects.toThrow(
+        await expect(resolveRunnerVersion(Version.latest(), 'token', 0)).rejects.toThrow(
             'Could not determine latest release version for gungraun-runner: not found'
         );
     });
