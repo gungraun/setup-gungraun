@@ -1,7 +1,7 @@
 {
     "name": "setup-gungraun",
     "license": "MIT",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "author": {
         "name": "gamma0987",
         "email": "gamma0987@posteo.de"
@@ -34,7 +34,7 @@
     },
     "simple-git-hooks": {
         "pre-commit": "npm run format:write && npm run lint && npm run build:check",
-        "pre-push": "npm run format:write && npm run lint && npm test && npm run build"
+        "pre-push": "npm run format:write && npm run lint && npm test && npm run build && npm install"
     },
     "dependencies": {
         "@actions/core": "^2.0.0",
