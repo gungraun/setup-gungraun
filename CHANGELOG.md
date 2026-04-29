@@ -17,6 +17,26 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [1.0.2] - 2025-04-29
+
+### Added
+
+- Retry logic for Octokit requests with configurable retry count for higher
+  resilience against network errors.
+
+### Changed
+
+- Package installations no longer run silently
+- Improved debugging output: `isDebug()` now also checks `ACTIONS_STEP_DEBUG`
+  and `RUNNER_DEBUG` environment variables (not just `GUNGRAUN_ACTION_DEBUG`)
+- `DEBUGINFOD_URLS` is now read from `/etc/debuginfod/*.urls` files instead of
+  being hardcoded to archlinux's URL
+- Updated dependency `typescript-eslint` to v8.59.1
+
+### Fixed
+
+- Addressed security warnings from repo code scanning
+
 ## [1.0.1] - 2025-04-21
 
 ### Changed
